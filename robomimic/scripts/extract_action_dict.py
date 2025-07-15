@@ -65,6 +65,7 @@ def extract_action_dict(dataset):
 
             action_dict_group = demo.require_group("action_dict")
             for key, data in this_action_dict.items():
+                print(key)
                 if key in action_dict_group:
                     del action_dict_group[key]
                 action_dict_group.create_dataset(key, data=data)

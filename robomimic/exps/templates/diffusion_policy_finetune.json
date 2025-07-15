@@ -1,13 +1,13 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "test",
+        "name": "dp_imn_finetune",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
-            "log_tb": true,
-            "log_wandb": false,
-            "wandb_proj_name": "debug"
+            "log_tb": false,
+            "log_wandb": true,
+            "wandb_proj_name": "diffusion_policy"
         },
         "save": {
             "enabled": true,
@@ -18,7 +18,7 @@
             "on_best_rollout_return": false,
             "on_best_rollout_success_rate": true
         },
-        "epoch_every_n_steps": 100,
+        "epoch_every_n_steps": null,
         "validation_epoch_every_n_steps": 10,
         "env": null,
         "additional_envs": null,
@@ -30,16 +30,26 @@
             "enabled": true,
             "n": 50,
             "horizon": 400,
-            "rate": 50,
+            "rate": 25,
             "warmstart": 0,
             "terminate_on_success": true
         },
-        "env_meta_update_dict": {},
-        "ckpt_path": null
+        "env_meta_update_dict": {
+            "env_kwargs": {
+                "controller_configs": {
+                    "body_parts": {
+                        "right": {
+                            "input_type": "absolute"
+                        }
+                    }                    
+                }
+            }
+        },
+        "ckpt_path": "/scratch/dcs3zc/robomimic/robomimic_v151/dp_imn_pretrain/dp_imn_pretrain/20250715083516/models/"
     },
     "train": {
         "data": null,
-        "output_dir": "../diffusion_policy_trained_models",
+        "output_dir": "/scratch/dcs3zc/robomimic/robomimic_v151/dp_imn_finetune",
         "normalize_weights_by_ds_size": false,
         "num_data_workers": 0,
         "hdf5_cache_mode": "all",
@@ -50,27 +60,40 @@
         "hdf5_validation_filter_key": null,
         "seq_length": 16,
         "pad_seq_length": true,
-        "frame_stack": 2,
+        "frame_stack": 1,
         "pad_frame_stack": true,
         "dataset_keys": [
-            "actions",
+            "action_dict/abs_pos", 
+            "action_dict/abs_rot_6d", 
+            "action_dict/gripper",
             "rewards",
             "dones"
         ],
         "action_keys": [
-            "actions"
+        "action_dict/abs_pos", "action_dict/abs_rot_6d", "action_dict/gripper"
         ],
         "action_config": {
-            "actions": {
-                "normalization": null
+            "action_dict/abs_pos": {
+                "normalization": "min_max",  
+                "rot_conversion": null 
+            },
+            "action_dict/abs_rot_6d": {
+                "normalization": "min_max",  
+                "rot_conversion": "axis_angle_to_6d"
+            },
+            "action_dict/gripper": {
+                "normalization": "min_max",  
+                "rot_conversion": null 
             }
         },
         "goal_mode": null,
         "cuda": true,
-        "batch_size": 100,
-        "num_epochs": 2000,
+        "batch_size": 128,
+        "num_epochs": 1000,
         "seed": 1,
-        "max_grad_norm": null
+        "max_grad_norm": null,
+        "temperature": 0.05,
+        "dist_quantile": 0.025
     },
     "algo": {
         "optim_params": {
@@ -91,8 +114,8 @@
             }
         },
         "horizon": {
-            "observation_horizon": 2,
-            "action_horizon": 8,
+            "observation_horizon": 1,
+            "action_horizon": 12,
             "prediction_horizon": 16
         },
         "unet": {
@@ -112,16 +135,16 @@
         },
         "ddpm": {
             "enabled": true,
-            "num_train_timesteps": 100,
-            "num_inference_timesteps": 100,
+            "num_train_timesteps": 16,
+            "num_inference_timesteps": 16,
             "beta_schedule": "squaredcos_cap_v2",
             "clip_sample": true,
             "prediction_type": "epsilon"
         },
         "ddim": {
             "enabled": false,
-            "num_train_timesteps": 100,
-            "num_inference_timesteps": 10,
+            "num_train_timesteps": 16,
+            "num_inference_timesteps": 16,
             "beta_schedule": "squaredcos_cap_v2",
             "clip_sample": true,
             "set_alpha_to_one": true,
@@ -135,10 +158,9 @@
                 "low_dim": [
                     "robot0_eef_pos",
                     "robot0_eef_quat",
-                    "robot0_gripper_qpos",
-                    "object"
+                    "robot0_gripper_qpos"
                 ],
-                "rgb": [],
+                "rgb": ["agentview_image"],
                 "depth": [],
                 "scan": []
             },
@@ -157,10 +179,29 @@
                 "obs_randomizer_kwargs": {}
             },
             "rgb": {
+                "input_shape": [3, 224, 224],
                 "core_class": "VisualCore",
-                "core_kwargs": {},
-                "obs_randomizer_class": null,
-                "obs_randomizer_kwargs": {}
+                "core_kwargs": {    
+                    "input_shape": [3, 224, 224],
+                    "backbone_class" : "ResNet18Conv", 
+                    "pretrained": true, 
+                    "input_coord_conv": false,
+                    "pool_class":"SpatialSoftmax",
+                    "pool_kwargs":{"num_kp": null,
+                                   "flatten": true,
+                                   "learnable_temperature" : true,
+                                   "noise_std" : 0.0003
+                                  },
+                    "feature_dimension": null
+                },
+                "obs_randomizer_class": "CropRandomizer",
+                "obs_randomizer_kwargs": {
+                    "input_shape": [3, 224, 224],
+                    "crop_height": 224,
+                    "crop_width": 224,
+                    "num_crops": 1,
+                    "pos_enc" : false
+                }
             },
             "depth": {
                 "core_class": "VisualCore",

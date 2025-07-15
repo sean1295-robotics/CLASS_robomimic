@@ -1,0 +1,225 @@
+{
+    "algo_name": "diffusion_policy",
+    "experiment": {
+        "name": "dp_imn_pretrain",
+        "validate": false,
+        "logging": {
+            "terminal_output_to_txt": true,
+            "log_tb": false,
+            "log_wandb": true,
+            "wandb_proj_name": "diffusion_policy"
+        },
+        "save": {
+            "enabled": true,
+            "every_n_seconds": null,
+            "every_n_epochs": 50,
+            "epochs": [],
+            "on_best_validation": false,
+            "on_best_rollout_return": false,
+            "on_best_rollout_success_rate": true
+        },
+        "epoch_every_n_steps": null,
+        "validation_epoch_every_n_steps": 10,
+        "env": null,
+        "additional_envs": null,
+        "render": false,
+        "render_video": true,
+        "keep_all_videos": false,
+        "video_skip": 5,
+        "rollout": {
+            "enabled": true,
+            "n": 50,
+            "horizon": 400,
+            "rate": 5,
+            "warmstart": 0,
+            "terminate_on_success": true
+        },
+        "env_meta_update_dict": {
+            "env_kwargs": {
+                "controller_configs": {
+                    "body_parts": {
+                        "right": {
+                            "input_type": "absolute"
+                        }
+                    }                    
+                }
+            }
+        },
+        "ckpt_path": null
+    },
+    "train": {
+        "data": null,
+        "output_dir": "/scratch/dcs3zc/robomimic/robomimic_v151/dp_imn_pretrain",
+        "normalize_weights_by_ds_size": false,
+        "num_data_workers": 0,
+        "hdf5_cache_mode": "all",
+        "hdf5_use_swmr": true,
+        "hdf5_load_next_obs": false,
+        "hdf5_normalize_obs": false,
+        "hdf5_filter_key": null,
+        "hdf5_validation_filter_key": null,
+        "seq_length": 16,
+        "pad_seq_length": true,
+        "frame_stack": 1,
+        "pad_frame_stack": true,
+        "dataset_keys": [
+            "action_dict/abs_pos", 
+            "action_dict/abs_rot_6d", 
+            "action_dict/gripper",
+            "rewards",
+            "dones"
+        ],
+        "action_keys": [
+        "action_dict/abs_pos", "action_dict/abs_rot_6d", "action_dict/gripper"
+        ],
+        "action_config": {
+            "action_dict/abs_pos": {
+                "normalization": "min_max",  
+                "rot_conversion": null 
+            },
+            "action_dict/abs_rot_6d": {
+                "normalization": "min_max",  
+                "rot_conversion": "axis_angle_to_6d"
+            },
+            "action_dict/gripper": {
+                "normalization": "min_max",  
+                "rot_conversion": null 
+            }
+        },
+        "goal_mode": null,
+        "cuda": true,
+        "batch_size": 128,
+        "num_epochs": 1000,
+        "seed": 1,
+        "max_grad_norm": null,
+        "temperature": 0.05,
+        "dist_quantile": 0.025
+    },
+    "algo": {
+        "optim_params": {
+            "policy": {
+                "optimizer_type": "sgd",
+                "learning_rate": {
+                    "initial": 0.04,
+                    "decay_factor": 0.1,
+                    "step_every_batch": true,
+                    "scheduler_type": "cosine",
+                    "num_cycles": 0.5,
+                    "warmup_steps": 500,
+                    "epoch_schedule": []
+                },
+                "regularization": {
+                    "L2": 1e-06
+                }
+            }
+        },
+        "horizon": {
+            "observation_horizon": 1,
+            "action_horizon": 12,
+            "prediction_horizon": 16
+        },
+        "unet": {
+            "enabled": true,
+            "diffusion_step_embed_dim": 256,
+            "down_dims": [
+                256,
+                512,
+                1024
+            ],
+            "kernel_size": 5,
+            "n_groups": 8
+        },
+        "ema": {
+            "enabled": true,
+            "power": 0.75
+        },
+        "ddpm": {
+            "enabled": true,
+            "num_train_timesteps": 16,
+            "num_inference_timesteps": 16,
+            "beta_schedule": "squaredcos_cap_v2",
+            "clip_sample": true,
+            "prediction_type": "epsilon"
+        },
+        "ddim": {
+            "enabled": false,
+            "num_train_timesteps": 16,
+            "num_inference_timesteps": 16,
+            "beta_schedule": "squaredcos_cap_v2",
+            "clip_sample": true,
+            "set_alpha_to_one": true,
+            "steps_offset": 0,
+            "prediction_type": "epsilon"
+        }
+    },
+    "observation": {
+        "modalities": {
+            "obs": {
+                "low_dim": [
+                    "robot0_eef_pos",
+                    "robot0_eef_quat",
+                    "robot0_gripper_qpos"
+                ],
+                "rgb": ["agentview_image"],
+                "depth": [],
+                "scan": []
+            },
+            "goal": {
+                "low_dim": [],
+                "rgb": [],
+                "depth": [],
+                "scan": []
+            }
+        },
+        "encoder": {
+            "low_dim": {
+                "core_class": null,
+                "core_kwargs": {},
+                "obs_randomizer_class": null,
+                "obs_randomizer_kwargs": {}
+            },
+            "rgb": {
+                "input_shape": [3, 224, 224],
+                "core_class": "VisualCore",
+                "core_kwargs": {    
+                    "input_shape": [3, 224, 224],
+                    "backbone_class" : "ResNet18Conv", 
+                    "pretrained": true, 
+                    "input_coord_conv": false,
+                    "pool_class":"SpatialSoftmax",
+                    "pool_kwargs":{"num_kp": null,
+                                   "flatten": true,
+                                   "learnable_temperature" : true,
+                                   "noise_std" : 0.0003
+                                  },
+                    "feature_dimension": null
+                },
+                "obs_randomizer_class": "CropRandomizer",
+                "obs_randomizer_kwargs": {
+                    "input_shape": [3, 224, 224],
+                    "crop_height": 224,
+                    "crop_width": 224,
+                    "num_crops": 1,
+                    "pos_enc" : false
+                }
+            },
+            "depth": {
+                "core_class": "VisualCore",
+                "core_kwargs": {},
+                "obs_randomizer_class": null,
+                "obs_randomizer_kwargs": {}
+            },
+            "scan": {
+                "core_class": "ScanCore",
+                "core_kwargs": {},
+                "obs_randomizer_class": null,
+                "obs_randomizer_kwargs": {}
+            }
+        }
+    },
+    "meta": {
+        "hp_base_config_file": null,
+        "hp_keys": [],
+        "hp_values": []
+    }
+}

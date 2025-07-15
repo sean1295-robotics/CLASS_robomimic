@@ -31,6 +31,7 @@ from collections import OrderedDict
 import torch
 from torch.utils.data import DataLoader
 
+import robosuite
 import robomimic
 import robomimic.utils.train_utils as TrainUtils
 import robomimic.utils.torch_utils as TorchUtils
@@ -42,7 +43,7 @@ from robomimic.algo import algo_factory, RolloutPolicy
 from robomimic.utils.log_utils import PrintLogger, DataLogger, flush_warnings
 
 
-def train(config, device, resume=False):
+def train(config, device, resume=False, pretrain=False):
     """
     Train a model using the algorithm.
     """
@@ -155,7 +156,7 @@ def train(config, device, resume=False):
 
     # load training data
     trainset, validset = TrainUtils.load_data_for_training(
-        config, obs_keys=shape_meta["all_obs_keys"])
+        config, obs_keys=shape_meta["all_obs_keys"], pretrain = pretrain)
     train_sampler = trainset.get_dataset_sampler()
     print("\n============= Training Dataset =============")
     print(trainset)
@@ -299,6 +300,7 @@ def train(config, device, resume=False):
             model=model,
             data_loader=train_loader,
             epoch=epoch,
+            pretrain=pretrain,
             num_steps=train_num_steps,
             obs_normalization_stats=obs_normalization_stats,
         )
@@ -366,8 +368,10 @@ def train(config, device, resume=False):
 
             num_episodes = config.experiment.rollout.n
             all_rollout_logs, video_paths = TrainUtils.rollout_with_stats(
+                config=config,
                 policy=rollout_model,
                 envs=envs,
+                dataset=trainset,
                 horizon=config.experiment.rollout.horizon,
                 use_goals=config.use_goals,
                 num_episodes=num_episodes,
@@ -376,6 +380,8 @@ def train(config, device, resume=False):
                 epoch=epoch,
                 video_skip=config.experiment.get("video_skip", 5),
                 terminate_on_success=config.experiment.rollout.terminate_on_success,
+                include_nonparam_rollout=pretrain, # include only non-parametric rollout if pretraining
+                include_param_rollout=not pretrain, # include only parametric rollout if not pretraining
             )
 
             # summarize results from rollouts to tensorboard and terminal
@@ -501,7 +507,7 @@ def main(args):
     # catch error during training and print it
     res_str = "finished run successfully!"
     try:
-        train(config, device=device, resume=args.resume)
+        train(config, device=device, resume=args.resume, pretrain=args.pretrain)
     except Exception as e:
         res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
     print(res_str)
@@ -554,6 +560,13 @@ if __name__ == "__main__":
         "--resume",
         action='store_true',
         help="set this flag to resume training from latest checkpoint",
+    )
+    
+    parser.add_argument(
+        "--pretrain",
+        action='store_true',
+        default=False,
+        help="set this flag to pretrain the model",
     )
 
     args = parser.parse_args()

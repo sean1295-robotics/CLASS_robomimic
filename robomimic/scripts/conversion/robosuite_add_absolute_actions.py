@@ -55,7 +55,7 @@ class RobomimicAbsoluteActionConverter:
         if robosuite.__version__ < "1.5":
             abs_env_meta['env_kwargs']['controller_configs']['control_delta'] = False
         else:
-            abs_env_meta['env_kwargs']['controller_configs']['body_parts']['right']['control_delta'] = False
+            abs_env_meta['env_kwargs']['controller_configs']['body_parts']['right']['input_type'] == "absolute"
 
         env = EnvUtils.create_env_from_metadata(
             env_meta=env_meta,
@@ -75,7 +75,7 @@ class RobomimicAbsoluteActionConverter:
             assert not abs_env.env.robots[0].controller.use_delta
             self.controller_config = abs_env._init_kwargs['controller_configs']
         else:
-            assert not abs_env._init_kwargs['controller_configs']['body_parts']['right']['control_delta']
+            assert not abs_env._init_kwargs['controller_configs']['body_parts']['right']['input_type'] == "absolute"
             self.controller_config = abs_env._init_kwargs['controller_configs']['body_parts']['right']
 
         self.env = env
@@ -199,7 +199,7 @@ def add_absolute_actions_to_dataset(dataset, num_workers):
             if "actions_abs" not in demo:
                 demo.create_dataset("actions_abs", data=np.array(abs_actions))
             else:
-                demo['actions_abs'][:] = abs_actions    
+                demo['actions_abs'][:] = abs_actions
 
 
 if __name__ == "__main__":

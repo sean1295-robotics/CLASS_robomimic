@@ -237,6 +237,8 @@ class BaseConfig(Config):
         self.train.seed = 1             # seed for training (for reproducibility)
 
         self.train.max_grad_norm = None  # clip gradient norms (see `backprop_for_loss` function in torch_utils.py) 
+        self.train.temperature = None  # temperature for CLASS-pretraining
+        self.train.dist_quantile = 0.025  # quantile for CLASS-pretraining
 
     def algo_config(self):
         """

@@ -676,6 +676,63 @@ class SequenceDataset(torch.utils.data.Dataset):
         return None
 
 
+class CLASS_SequenceDataset(SequenceDataset):
+    def __init__(self, temperature, dist_quantile, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.temperature = torch.ones(1) * temperature
+        self.dist_quantile = dist_quantile
+        self.generate_sim(self.dist_quantile)
+        
+    def generate_sim(self, dist_quantile = 0.025):
+        hdf5_dir = os.path.dirname(self.hdf5_path)
+        dist_path = os.path.join(hdf5_dir, "dist.pth")
+        if os.path.exists(dist_path):
+            print("Loading distance matrix from: ", dist_path)
+            self.dist = torch.load(dist_path)
+        else:
+            from aeon.distances import dtw_pairwise_distance
+            nacs = []
+            for i in range(len(self)):
+                nacs.append(super().__getitem__(i)["actions"])
+            nacs = np.stack(nacs, axis=0).transpose(0, 2, 1) # (B, T, D) -> (B, D, T)
+            print(nacs.shape, "Computing pairwise DTW distances...")
+            dists = TensorUtils.to_tensor(dtw_pairwise_distance(nacs))
+            print("Pairwise DTW distances computed.")
+            self.dist = self.get_cdf_dist(dists, dist_quantile)
+            print("Distance matrix computed with quantile: ", dist_quantile)
+            hdf5_dir = os.path.dirname(self.hdf5_path)
+            dist_path = os.path.join(hdf5_dir, "dist.pth")
+            print("Saving distance matrix to: ", dist_path)
+            torch.save(self.dist, dist_path)
+        
+    @staticmethod
+    def get_cdf_dist(dist, quantile = 0.02):
+        triu_mask = torch.triu(torch.ones_like(dist, dtype=torch.bool), diagonal=1)
+        flat = dist[triu_mask]
+        
+        k = int(flat.numel() * quantile)
+        topk_values, topk_indices = torch.topk(flat, k, largest=False, sorted=True)
+        print('Threshold: ', topk_values.max())
+    
+        inv_cdf = torch.linspace(1.0, 0.0, steps=k, device=dist.device)
+        dist_vals = torch.zeros_like(flat, dtype = inv_cdf.dtype)
+        dist_vals[topk_indices] = inv_cdf
+    
+        # Build normalized symmetric dist matrix
+        dist = torch.zeros_like(dist, dtype = dist_vals.dtype)
+        dist[triu_mask] = dist_vals
+        dist = dist + dist.T  # Reflect to lower triangle
+        return dist
+    
+    def __getitem__(self, index):
+        output = super().__getitem__(index)
+        output["dist"] = self.dist[index]
+        output["index"] = index
+        output["temperature"] = self.temperature
+        return output
+    
+        
+        
 class CustomWeightedRandomSampler(torch.utils.data.WeightedRandomSampler):
     def __init__(self, *args, **kwargs):
         """
@@ -912,4 +969,11 @@ def action_stats_to_normalization_stats(action_stats, action_config):
             raise NotImplementedError(
                 'action_config.actions.normalization: "{}" is not supported'.format(norm_method))
     
+    if (
+        action_key in action_config
+        and isinstance(action_config[action_key], dict)
+        and action_config[action_key].get("rot_conversion") is not None
+    ):
+        action_normalization_stats[action_key]["rot_conversion"] = action_config[action_key]["rot_conversion"]   
+             
     return action_normalization_stats
