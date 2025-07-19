@@ -1,7 +1,7 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_finetune",
+        "name": "dp_imn_finetune_aug",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -30,7 +30,7 @@
             "enabled": true,
             "n": 50,
             "horizon": 400,
-            "rate": 25,
+            "rate": 10,
             "warmstart": 0,
             "terminate_on_success": true
         },
@@ -45,11 +45,11 @@
                 }
             }
         },
-        "ckpt_path": "/scratch/dcs3zc/robomimic/robomimic_v151/dp_imn_pretrain/dp_imn_pretrain/20250715083516/models/"
+        "ckpt_path": "/scratch/dcs3zc/robomimic/robomimic_v151/dp_imn_pretrain/20250715105413/models/model_epoch_165_image_v15_success_0.84.pth"
     },
     "train": {
         "data": null,
-        "output_dir": "/scratch/dcs3zc/robomimic/robomimic_v151/dp_imn_finetune",
+        "output_dir": "/scratch/dcs3zc/robomimic/robomimic_v151",
         "normalize_weights_by_ds_size": false,
         "num_data_workers": 0,
         "hdf5_cache_mode": "all",
@@ -88,8 +88,8 @@
         },
         "goal_mode": null,
         "cuda": true,
-        "batch_size": 128,
-        "num_epochs": 1000,
+        "batch_size": 64,
+        "num_epochs": 200,
         "seed": 1,
         "max_grad_norm": null,
         "temperature": 0.05,
@@ -190,7 +190,7 @@
                     "pool_kwargs":{"num_kp": null,
                                    "flatten": true,
                                    "learnable_temperature" : true,
-                                   "noise_std" : 0.0003
+                                   "noise_std" : 0
                                   },
                     "feature_dimension": null
                 },

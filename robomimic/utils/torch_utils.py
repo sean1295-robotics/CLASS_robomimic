@@ -124,7 +124,13 @@ def optimizer_from_optim_params(net_optim_params, net):
             lr=lr,
             weight_decay=net_optim_params["regularization"]["L2"],
         )
-    
+    elif optimizer_type == "lars":
+        from utils.optim_utils import LARS
+        return LARS(
+            params=net.parameters(),
+            lr=lr,
+            weight_decay=net_optim_params["regularization"]["L2"],
+        )
 
 
 def lr_scheduler_from_optim_params(net_optim_params, net, optimizer):

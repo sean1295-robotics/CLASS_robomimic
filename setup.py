@@ -32,6 +32,7 @@ setup(
         "huggingface_hub==0.23.4",
         "transformers==4.41.2",
         "diffusers==0.11.1",
+        "aeon",
     ],
     eager_resources=['*'],
     include_package_data=True,

@@ -792,7 +792,7 @@ class GaussianNoiseRandomizer(Randomizer):
         input_shape,
         noise_mean=0.0,
         noise_std=0.3,
-        limits=None,
+        limits=(0,255),
         num_samples=1,
     ):
         """
@@ -874,4 +874,167 @@ class GaussianNoiseRandomizer(Randomizer):
         header = '{}'.format(str(self.__class__.__name__))
         msg = header + f"(input_shape={self.input_shape}, noise_mean={self.noise_mean}, noise_std={self.noise_std}, " \
                        f"limits={self.limits}, num_samples={self.num_samples})"
+        return msg
+
+class CompoundRandomizer(Randomizer):
+    """
+    Combines CropRandomizer, ColorRandomizer, and GaussianNoiseRandomizer into a single randomizer.
+    Applies all three augmentations sequentially at input, and averages across all samples at output.
+    """
+    def __init__(
+        self,
+        input_shape,
+        # Crop randomizer params
+        crop_height=224,
+        crop_width=224,
+        num_crops=1,
+        pos_enc=False,
+        # Color randomizer params 
+        brightness=0.3,
+        contrast=0.3,
+        saturation=0.3,
+        hue=0.3,
+        num_color_samples=1,
+        # Gaussian noise randomizer params 
+        noise_mean=0.0,
+        noise_std=5,
+        noise_limits=(0,255),
+        num_noise_samples=1,
+    ):
+        """
+        Args:
+            input_shape (tuple, list): shape of input (not including batch dimension)
+            crop_height (int): crop height for CropRandomizer
+            crop_width (int): crop width for CropRandomizer
+            num_crops (int): number of random crops to take
+            pos_enc (bool): if True, add 2 channels to encode spatial location
+            brightness (float): brightness jitter for ColorRandomizer
+            contrast (float): contrast jitter for ColorRandomizer
+            saturation (float): saturation jitter for ColorRandomizer
+            hue (float): hue jitter for ColorRandomizer
+            num_color_samples (int): number of color jitter samples
+            noise_mean (float): mean of gaussian noise
+            noise_std (float): standard deviation of gaussian noise
+            noise_limits (None or 2-tuple): min/max values to clamp noisy samples
+            num_noise_samples (int): number of noise samples
+        """
+        super(CompoundRandomizer, self).__init__()
+        
+        self.input_shape = input_shape
+        
+        # Create individual randomizers
+        self.crop_randomizer = CropRandomizer(
+            input_shape=input_shape,
+            crop_height=crop_height,
+            crop_width=crop_width,
+            num_crops=num_crops,
+            pos_enc=pos_enc,
+        )
+        
+        # Get the output shape from crop randomizer for next randomizer
+        crop_output_shape = self.crop_randomizer.output_shape_in(input_shape)
+        
+        self.color_randomizer = ColorRandomizer(
+            input_shape=crop_output_shape,
+            brightness=brightness,
+            contrast=contrast,
+            saturation=saturation,
+            hue=hue,
+            num_samples=num_color_samples,
+        )
+        
+        self.noise_randomizer = GaussianNoiseRandomizer(
+            input_shape=crop_output_shape,
+            noise_mean=noise_mean,
+            noise_std=noise_std,
+            limits=noise_limits,
+            num_samples=num_noise_samples,
+        )
+        
+        # Calculate total number of samples (multiplicative effect)
+        self.total_samples = num_crops * num_color_samples * num_noise_samples
+        
+    def output_shape_in(self, input_shape=None):
+        """
+        Output shape after forward_in operation.
+        """
+        return self.crop_randomizer.output_shape_in(input_shape)
+    
+    def output_shape_out(self, input_shape=None):
+        """
+        Output shape after forward_out operation.
+        """
+        return list(input_shape)
+    
+    def _forward_in(self, inputs):
+        """
+        Apply all three randomizers sequentially.
+        """
+        # Apply crop randomizer first
+        out = self.crop_randomizer._forward_in(inputs)
+        
+        # Apply color randomizer
+        out = self.color_randomizer._forward_in(out)
+        
+        # Apply gaussian noise randomizer
+        out = self.noise_randomizer._forward_in(out)
+        
+        return out
+    
+    def _forward_in_eval(self, inputs):
+        """
+        During evaluation, only apply center crop (no color jitter or noise).
+        """
+        return self.crop_randomizer._forward_in_eval(inputs)
+    
+    def _forward_out(self, inputs):
+        """
+        Average across all samples to get consistent output shape.
+        """
+        # Calculate original batch size
+        batch_size = inputs.shape[0] // self.total_samples
+        
+        # Reshape to [B, total_samples, ...] and average
+        out = TensorUtils.reshape_dimensions(
+            inputs, 
+            begin_axis=0, 
+            end_axis=0,
+            target_dims=(batch_size, self.total_samples)
+        )
+        return out.mean(dim=1)
+    
+    def _visualize(self, pre_random_input, randomized_input, num_samples_to_visualize=2):
+        """
+        Visualize the compound randomization effect.
+        """
+        batch_size = pre_random_input.shape[0]
+        random_sample_inds = torch.randint(0, batch_size, size=(num_samples_to_visualize,))
+        pre_random_input_np = TensorUtils.to_numpy(pre_random_input)[random_sample_inds]
+        
+        # Reshape randomized input to show all samples
+        randomized_input = TensorUtils.reshape_dimensions(
+            randomized_input,
+            begin_axis=0,
+            end_axis=0,
+            target_dims=(batch_size, self.total_samples)
+        )  # [B * total_samples, ...] -> [B, total_samples, ...]
+        randomized_input_np = TensorUtils.to_numpy(randomized_input[random_sample_inds])
+        
+        # Transpose for visualization
+        pre_random_input_np = pre_random_input_np.transpose((0, 2, 3, 1))  # [B, C, H, W] -> [B, H, W, C]
+        randomized_input_np = randomized_input_np.transpose((0, 1, 3, 4, 2))  # [B, N, C, H, W] -> [B, N, H, W, C]
+        
+        visualize_image_randomizer(
+            pre_random_input_np,
+            randomized_input_np,
+            randomizer_name='{}'.format(str(self.__class__.__name__))
+        )
+    
+    def __repr__(self):
+        """Pretty print network."""
+        header = '{}'.format(str(self.__class__.__name__))
+        msg = header + f"(input_shape={self.input_shape}, total_samples={self.total_samples})\n"
+        msg += f"  - CropRandomizer: {self.crop_randomizer}\n"
+        msg += f"  - ColorRandomizer: {self.color_randomizer}\n"
+        msg += f"  - GaussianNoiseRandomizer: {self.noise_randomizer}"
         return msg
