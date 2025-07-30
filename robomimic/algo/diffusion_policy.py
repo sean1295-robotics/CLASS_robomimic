@@ -4,6 +4,7 @@ Implementation of Diffusion Policy https://diffusion-policy.cs.columbia.edu/ by 
 from typing import Callable, Union
 from collections import OrderedDict, deque
 from packaging.version import parse as parse_version
+from copy import deepcopy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -107,13 +108,16 @@ class DiffusionPolicyUNet(PolicyAlgo):
         
         # setup EMA
         ema = None
+        ema_nets = None
         if self.algo_config.ema.enabled:
-            ema = EMAModel(model=nets, power=self.algo_config.ema.power)
+            ema = EMAModel(parameters=nets.parameters(), power=self.algo_config.ema.power)
+            ema_nets = deepcopy(nets)
                 
         # set attrs
         self.nets = nets
         self.noise_scheduler = noise_scheduler
         self.ema = ema
+        self.ema_nets = ema_nets
         self.action_check_done = False
         self.obs_queue = None
         self.action_queue = None
@@ -318,7 +322,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 
                 # update Exponential Moving Average of the model weights
                 if self.ema is not None:
-                    self.ema.step(self.nets)
+                    self.ema.step(self.nets.parameters())
                 
                 step_info = {
                     "policy_grad_norms": policy_grad_norms
@@ -416,7 +420,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
         # select network
         nets = self.nets
         if self.ema is not None:
-            nets = self.ema.averaged_model
+            nets = self.ema_nets
         
         # encode obs
         inputs = {
@@ -468,11 +472,13 @@ class DiffusionPolicyUNet(PolicyAlgo):
         """
         Get dictionary of current model parameters.
         """
+        if self.ema is not None:
+            self.ema.copy_to(self.ema_nets.parameters())
         return {
             "nets": self.nets.state_dict(),
             "optimizers": { k : self.optimizers[k].state_dict() for k in self.optimizers },
             "lr_schedulers": { k : self.lr_schedulers[k].state_dict() if self.lr_schedulers[k] is not None else None for k in self.lr_schedulers },
-            "ema": self.ema.averaged_model.state_dict() if self.ema is not None else None,
+            "ema": self.ema.state_dict() if self.ema is not None else None,
         }
 
     def deserialize(self, model_dict, load_optimizers=False):
@@ -494,7 +500,8 @@ class DiffusionPolicyUNet(PolicyAlgo):
             model_dict["lr_schedulers"] = {}
 
         if model_dict.get("ema", None) is not None:
-            self.ema.averaged_model.load_state_dict(model_dict["ema"])
+            self.ema.load_state_dict(model_dict["ema"])
+            self.ema_nets.load_state_dict(model_dict["nets"])
 
         if load_optimizers:
             for k in model_dict["optimizers"]:

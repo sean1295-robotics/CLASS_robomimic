@@ -1,7 +1,7 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_pretrain_128",
+        "name": "dp_imn_pretrain_1536",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -88,8 +88,8 @@
         },
         "goal_mode": null,
         "cuda": true,
-        "batch_size": 128,
-        "num_epochs": 2000,
+        "batch_size": 1536,
+        "num_epochs": 5000,
         "seed": 1,
         "max_grad_norm": null,
         "temperature": 0.05,
