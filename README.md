@@ -3,8 +3,8 @@
 ## Installation
 Install using the following commands
 ```
-$ conda create -n CLASS python=3.11
-$ conda activate CLASS
+$ conda create -n CLASS_robomimic python=3.11
+$ conda activate CLASS_robomimic
 $ conda install pytorch==2.6.0 torchvision==0.21.0 -c pytorch
 $ git clone https://github.com/sean1295-robotics/CLASS_robomimic.git
 $ cd CLASS_robomimic
