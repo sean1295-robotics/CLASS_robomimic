@@ -7,7 +7,7 @@ $ conda create -n CLASS python=3.11
 $ conda activate CLASS
 $ conda install pytorch==2.6.0 torchvision==0.21.0 -c pytorch
 $ git clone https://github.com/sean1295-robotics/CLASS_robomimic.git
-$ cd robomimic
+$ cd CLASS_robomimic
 $ pip install -e .
 ```
 ## Prepare Dataset
