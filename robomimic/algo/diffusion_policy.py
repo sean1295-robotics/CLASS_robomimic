@@ -118,6 +118,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
         self.noise_scheduler = noise_scheduler
         self.ema = ema
         self.ema_nets = ema_nets
+        self.ema_nets.eval() # ema_nets should always be in eval mode
         self.action_check_done = False
         self.obs_queue = None
         self.action_queue = None
