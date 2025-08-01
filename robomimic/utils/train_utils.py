@@ -251,7 +251,6 @@ def get_dataset(
         ds_kwargs_copy["lang"] = ds_langs[i]
         
         ds_list.append(ds_class(**ds_kwargs_copy))
-    
     if len(ds_weights) == 1:
         ds = ds_list[0]
     else:

@@ -526,7 +526,6 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         # also return the sampled index
         meta["index"] = index
-
         # language embedding
         if self._lang_emb is not None:
             T = meta["actions"].shape[0]

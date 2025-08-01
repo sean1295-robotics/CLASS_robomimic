@@ -17,6 +17,7 @@ import os
 import numpy as np
 import imageio
 
+import robomimic.utils.action_utils as AcUtils
 import robomimic.utils.tensor_utils as TensorUtils
 import robomimic.utils.torch_utils as TorchUtils
 import robomimic.utils.obs_utils as ObsUtils

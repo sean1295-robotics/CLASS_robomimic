@@ -20,28 +20,35 @@ import json
 import numpy as np
 import time
 import os
+os.environ["MUJOCO_GL"] = "egl"
 import shutil
 import psutil
 import sys
-import socket
 import traceback
 
 from collections import OrderedDict
 
 import torch
 from torch.utils.data import DataLoader
+import tensorflow as tf
 
 import robosuite
 import robomimic
+import robomimic.utils.action_utils as ActionUtils
 import robomimic.utils.train_utils as TrainUtils
 import robomimic.utils.torch_utils as TorchUtils
 import robomimic.utils.obs_utils as ObsUtils
 import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.file_utils as FileUtils
+from robomimic.utils.dataset import action_stats_to_normalization_stats
 from robomimic.config import config_factory
 from robomimic.algo import algo_factory, RolloutPolicy
+from robomimic.utils.rlds_utils import droid_dataset_transform, robomimic_transform, DROID_TO_RLDS_OBS_KEY_MAP, DROID_TO_RLDS_LOW_DIM_OBS_KEY_MAP, TorchRLDSDataset
 from robomimic.utils.log_utils import PrintLogger, DataLogger, flush_warnings
 
+from octo.data.dataset import make_dataset_from_rlds, make_interleaved_dataset
+from octo.data.utils.data_utils import combine_dataset_statistics
+from octo.utils.spec import ModuleSpec
 
 def train(config, device, resume=False, pretrain=False):
     """
@@ -71,7 +78,80 @@ def train(config, device, resume=False, pretrain=False):
 
     # read config to set up metadata for observation modalities (e.g. detecting rgb observations)
     ObsUtils.initialize_obs_utils_with_config(config)
+    
+    ds_format = config.train.data_format
 
+    if ds_format == "droid_rlds":
+        # # load basic metadata from training file
+        # print("\n============= Loaded Environment Metadata =============")
+        env_meta = FileUtils.get_env_metadata_from_dataset(dataset_path=None, ds_format=ds_format)
+        obs_normalization_stats = None
+
+        # FOR RLDS
+        tf.config.set_visible_devices([], "GPU")
+
+        obs_modalities = config.observation.modalities.obs.rgb
+        # NOTE: Must be 2 cam for now, can clean this up later
+        assert(len(obs_modalities) == 2)
+        BASE_DATASET_KWARGS = {
+                "data_dir": config.train.data_path,
+                "image_obs_keys": {"primary": "exterior_image_1_left", "secondary": "exterior_image_2_left"},
+                "state_obs_keys": ["cartesian_position", "gripper_position"],
+                "language_key": "language_instruction",
+                "norm_skip_keys":  ["proprio"],
+                "action_proprio_normalization_type": "bounds",
+                "absolute_action_mask": [True] * 10,
+                "action_normalization_mask": [True] * 9 + [False],
+                "standardize_fn": droid_dataset_transform,
+         }
+        dataset_names = config.train.dataset_names
+        filter_functions = [[ModuleSpec.create(
+                                "robomimic.utils.rlds_utils:filter_success"
+                                )] if d_name == "droid" else [] \
+                            for d_name in dataset_names]
+        dataset_kwargs_list = [
+            {"name": d_name, "filter_functions": f_functions, **BASE_DATASET_KWARGS} for d_name, f_functions in zip(dataset_names, filter_functions)
+        ]
+        # Compute combined normalization stats
+        combined_dataset_statistics = combine_dataset_statistics(
+            [make_dataset_from_rlds(**dataset_kwargs, train=True)[1] for dataset_kwargs in dataset_kwargs_list]
+        )
+        dataset = make_interleaved_dataset(
+            dataset_kwargs_list,
+            config.train.sample_weights,
+            train=True,
+            shuffle_buffer_size=config.train.shuffle_buffer_size,
+            batch_size=None,  # batching will be handled in PyTorch Dataloader object
+            balance_weights=False,
+            dataset_statistics=combined_dataset_statistics,
+            traj_transform_kwargs=dict(
+                # NOTE(Ashwin): window_size and future_action_window_size may break if 
+                # not using diffusion policy
+                window_size=config.algo.horizon.observation_horizon,
+                future_action_window_size=config.algo.horizon.prediction_horizon-1,
+                subsample_length=config.train.subsample_length,
+                skip_unlabeled=True,    # skip all trajectories without language
+            ),
+            frame_transform_kwargs=dict(
+                image_augment_kwargs=dict(
+                ),
+                resize_size=dict(
+                    primary=config.observation.encoder.rgb.core_kwargs.input_shape[1:], 
+                    secondary=config.observation.encoder.rgb.core_kwargs.input_shape[1:],
+                ),
+                num_parallel_calls=config.train.num_parallel_calls,
+            ),
+            traj_transform_threads=config.train.traj_transform_threads,
+            traj_read_threads=config.train.traj_read_threads,
+        )
+        # Note: If we have separated statistics for multiple datasets, use the first one (assumed to be DROID)
+        # Otherwise, use the combined dataset statistics.
+        rlds_dataset_stats = dataset.dataset_statistics[0] if isinstance(dataset.dataset_statistics, list) else dataset.dataset_statistics
+        action_stats = ActionUtils.get_action_stats_dict(rlds_dataset_stats["action"], config.train.action_keys, config.train.action_shapes)
+        action_normalization_stats = action_stats_to_normalization_stats(action_stats, config.train.action_config)
+        trainset = dataset.map(robomimic_transform, num_parallel_calls=config.train.traj_transform_threads)
+
+    
     # extract the metadata and shape metadata across all datasets
     env_meta_list = []
     shape_meta_list = []
@@ -89,7 +169,7 @@ def train(config, device, resume=False, pretrain=False):
         env_meta = FileUtils.get_env_metadata_from_dataset(dataset_path=dataset_path)
 
         # populate language instruction for env in env_meta
-        env_meta["lang"] = dataset_cfg.get("lang", "dummy")
+        env_meta["lang"] = dataset_cfg.get("lang", None)
 
         # update env meta if applicable
         from robomimic.utils.python_utils import deep_update
@@ -103,7 +183,6 @@ def train(config, device, resume=False, pretrain=False):
             verbose=True
         )
         shape_meta_list.append(shape_meta)
-
     if config.experiment.env is not None:
         # if an environment name is specified, just use this env using the first dataset's metadata
         # and ignore envs from all datasets
@@ -153,7 +232,6 @@ def train(config, device, resume=False, pretrain=False):
                 print(env)
 
     print("")
-
     # load training data
     trainset, validset = TrainUtils.load_data_for_training(
         config, obs_keys=shape_meta["all_obs_keys"], pretrain = pretrain)
@@ -173,7 +251,6 @@ def train(config, device, resume=False, pretrain=False):
 
     # maybe retreve statistics for normalizing actions
     action_normalization_stats = trainset.get_action_normalization_stats()
-
     # initialize data loaders
     train_loader = DataLoader(
         dataset=trainset,
@@ -183,7 +260,6 @@ def train(config, device, resume=False, pretrain=False):
         num_workers=config.train.num_data_workers,
         drop_last=True
     )
-
     if config.experiment.validate:
         # cap num workers for validation dataset at 1
         num_workers = min(config.train.num_data_workers, 1)

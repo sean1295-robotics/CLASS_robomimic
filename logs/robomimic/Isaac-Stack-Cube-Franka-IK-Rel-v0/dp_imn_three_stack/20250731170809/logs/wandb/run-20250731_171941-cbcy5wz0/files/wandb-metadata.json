@@ -1,0 +1,88 @@
+{
+  "os":  "Linux-4.18.0-553.47.1.el8_10.x86_64-x86_64-with-glibc2.28",
+  "python":  "CPython 3.11.11",
+  "startedAt":  "2025-07-31T21:19:41.493619Z",
+  "args":  [
+    "--dataset",
+    "/scratch/dcs3zc/IsaacLab/mimic_vision_dataset.hdf5",
+    "--task",
+    "Isaac-Stack-Cube-Franka-IK-Rel-v0",
+    "--cfg_entry_point_file",
+    "robomimic/exps/templates/diffusion_policy_isaac_lab.json"
+  ],
+  "program":  "/sfs/gpfs/tardis/home/dcs3zc/robomimic/robomimic/scripts/train_isaac_lab.py",
+  "codePath":  "robomimic/scripts/train_isaac_lab.py",
+  "codePathLocal":  "robomimic/scripts/train_isaac_lab.py",
+  "git":  {
+    "remote":  "https://github.com/sean1295-robotics/CLASS_robomimic.git",
+    "commit":  "0d81bc4d247b92772b367ebf621b9152fa9befbc"
+  },
+  "email":  "sean1295@vt.edu",
+  "root":  "/sfs/gpfs/tardis/home/dcs3zc/robomimic/logs/robomimic/Isaac-Stack-Cube-Franka-IK-Rel-v0/dp_imn_three_stack/20250731170809/logs",
+  "host":  "udc-ba04-35",
+  "executable":  "/home/dcs3zc/anaconda3/envs/bcl/bin/python",
+  "cpu_count":  96,
+  "cpu_count_logical":  96,
+  "gpu":  "NVIDIA A40",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "706906132480",
+      "used":  "589011587072"
+    }
+  },
+  "memory":  {
+    "total":  "1622909587456"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA A40",
+      "memoryTotal":  "48305799168",
+      "cudaCores":  10752,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-f81a33ab-8bfe-402a-45b1-bf9c4ede2a13"
+    }
+  ],
+  "cudaVersion":  "12.8",
+  "slurm":  {
+    "cluster_name":  "shen",
+    "conf":  "/opt/slurm/current/etc/slurm.conf",
+    "cpus_on_node":  "4",
+    "cpus_per_task":  "4",
+    "export_env":  "NONE",
+    "get_user_env":  "1",
+    "gpus_on_node":  "1",
+    "gtids":  "0",
+    "job_account":  "lia-lab-members",
+    "job_cpus_per_node":  "4",
+    "job_end_time":  "1754241404",
+    "job_gid":  "100",
+    "job_gpus":  "1",
+    "job_id":  "1914487",
+    "job_name":  "ood_vscode",
+    "job_nodelist":  "udc-ba04-35",
+    "job_num_nodes":  "1",
+    "job_partition":  "gpu-a40",
+    "job_qos":  "normal",
+    "job_start_time":  "1753982204",
+    "job_uid":  "15368237",
+    "job_user":  "dcs3zc",
+    "jobid":  "1914487",
+    "localid":  "0",
+    "mem_per_node":  "785408",
+    "nnodes":  "1",
+    "nodeid":  "0",
+    "nodelist":  "udc-ba04-35",
+    "oom_kill_step":  "0",
+    "prio_process":  "0",
+    "procid":  "0",
+    "submit_dir":  "/var/www/ood/apps/sys/dashboard",
+    "submit_host":  "udc-ba37-31c1",
+    "task_pid":  "664896",
+    "tasks_per_node":  "1",
+    "topology_addr":  "udc-ba04-35",
+    "topology_addr_pattern":  "node",
+    "tres_per_task":  "cpu=4"
+  },
+  "writerId":  "fbknwzjjd3lqmvs2deceii8f8ilhzyob"
+}

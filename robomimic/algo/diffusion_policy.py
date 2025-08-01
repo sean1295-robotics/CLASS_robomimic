@@ -234,6 +234,9 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 B = batch["temperature"].shape[0]  
                 img_features = []
                 # Deterministic order since self.observation_group_shapes is OrderedDict
+                lang_emb = None 
+                if "lang_emb" in batch["obs"]:
+                    lang_emb = batch["obs"]["lang_emb"]
                 for obs_group in self.nets["policy"]["obs_encoder"].observation_group_shapes["obs"]:
                     if 'image' in obs_group:
                         # pass through encoder
@@ -243,10 +246,10 @@ class DiffusionPolicyUNet(PolicyAlgo):
                         # maybe process encoder input with randomizer
                         for obs_randomizer in obs_randomizers:
                             if obs_randomizer is not None:
-                                img = obs_randomizer.forward_in(img)                    
-                        img_features.append(obs_net.forward(img))
+                                img = obs_randomizer.forward_in(img)        
+                        img_features.append(obs_net.forward(img, lang_emb))
                 img_features = torch.cat(img_features, dim=-1)                     
-                assert img_features.ndim == 2  
+                assert img_features.ndim == 2
                 
                 img_features = F.normalize(img_features, dim=1) 
                 sim_matrix = torch.div(torch.matmul(img_features, img_features.T), batch["temperature"])
@@ -279,7 +282,6 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 for k in self.obs_shapes:
                     # first two dimensions should be [B, T] for inputs
                     assert inputs["obs"][k].ndim - 2 == len(self.obs_shapes[k])
-                
                 obs_features = TensorUtils.time_distributed(inputs, self.nets["policy"]["obs_encoder"], inputs_as_kwargs=True)
                 assert obs_features.ndim == 3  # [B, T, D]
 

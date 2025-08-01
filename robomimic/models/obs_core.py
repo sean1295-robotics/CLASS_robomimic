@@ -165,7 +165,7 @@ class VisualCore(EncoderCore, BaseNets.ConvBase):
         else:
             return feat_shape
 
-    def forward(self, inputs):
+    def forward(self, inputs, lang_emb=None):
         """
         Forward pass through visual core.
         """

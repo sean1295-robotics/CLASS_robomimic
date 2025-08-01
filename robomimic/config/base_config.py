@@ -206,7 +206,7 @@ class BaseConfig(Config):
         # list of action keys to use for prediction - each should correspond to a key in self.train.action_config.
         # Importantly, the order matters - these keys will be concatenated into a single action vector.
         self.train.action_keys = ["actions"]
-
+        self.train.action_shapes = [(1, 1)]
         # specifing each action keys to load and their corresponding normalization/conversion requirement
         # e.g. for dataset keys "action/eef_pos" and "action/eef_rot"
         # the desired value of self.train.action_config is: 
@@ -237,6 +237,24 @@ class BaseConfig(Config):
         self.train.seed = 1             # seed for training (for reproducibility)
 
         self.train.max_grad_norm = None  # clip gradient norms (see `backprop_for_loss` function in torch_utils.py) 
+        
+        self.train.data_format = "robomimic" # either "robomimic" or "droid"
+
+        # list of observation keys to shuffle randomly in the dataset.
+        # must be list of tuples pairs, with each pair representing
+        # the corresponding observation key groups to shuffle
+        self.train.shuffled_obs_key_groups = None
+
+        # RLDS only
+        self.train.data_path = ""
+        self.train.shuffle_buffer_size = 100000
+        self.train.sample_weights = [1]
+        self.train.dataset_names = [""]
+        self.train.subsample_length = 100
+        self.train.num_parallel_calls = 200
+        self.train.traj_transform_threads = 48
+        self.train.traj_read_threads = 48
+        
         self.train.temperature = None  # temperature for CLASS-pretraining
         self.train.dist_quantile = 0.025  # quantile for CLASS-pretraining
 

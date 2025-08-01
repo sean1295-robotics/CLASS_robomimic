@@ -86,7 +86,7 @@ def get_demos_for_filter_key(hdf5_path, filter_key):
     return demo_keys
 
 
-def get_env_metadata_from_dataset(dataset_path, set_env_specific_obs_processors=True):
+def get_env_metadata_from_dataset(dataset_path, ds_format='robomimic', set_env_specific_obs_processors=True):
     """
     Retrieves env metadata from dataset.
 
@@ -105,13 +105,25 @@ def get_env_metadata_from_dataset(dataset_path, set_env_specific_obs_processors=
             :`'type'`: type of environment, should be a value in EB.EnvType
             :`'env_kwargs'`: dictionary of keyword arguments to pass to environment constructor
     """
-    dataset_path = os.path.expanduser(dataset_path)
-    f = h5py.File(dataset_path, "r")
-    env_meta = json.loads(f["data"].attrs["env_args"])
-    if "env_lang" in env_meta["env_kwargs"]: del env_meta["env_kwargs"]["env_lang"]
+    if ds_format != "droid_rlds":
+        dataset_path = os.path.expanduser(dataset_path)
+        f = h5py.File(dataset_path, "r")
 
-    f.close()
-    if set_env_specific_obs_processors:
+    if ds_format == "robomimic":
+        env_meta = json.loads(f["data"].attrs["env_args"])
+        f.close()
+    elif ds_format == "droid":
+        env_meta = dict(f.attrs)
+        f.close()
+    elif ds_format == "droid_rlds":
+        # TODO(Ashwin): find a proper way to extract this; this info isn't actually used though
+        env_meta = {}
+    else:
+        raise ValueError
+    if "env_kwargs" in env_meta and "env_lang" in env_meta["env_kwargs"]: 
+        del env_meta["env_kwargs"]["env_lang"]
+
+    if env_meta and set_env_specific_obs_processors:
         # handle env-specific custom observation processing logic
         EnvUtils.set_env_specific_obs_processing(env_meta=env_meta)
     return env_meta
