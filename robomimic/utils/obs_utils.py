@@ -73,11 +73,12 @@ class ObservationKeyToModalityDict(dict):
     config. Thus, this dictionary will automatically handle those keys by implicitly associating them with the low_dim
     modality.
     """
-    def __getitem__(self, item):
+    def __getitem__(self, item, verbose=False):
         # If a key doesn't already exist, warn the user and add default mapping
         if item not in self.keys():
-            print(f"ObservationKeyToModalityDict: {item} not found,"
-                  f" adding {item} to mapping with assumed low_dim modality!")
+            if verbose:
+                print(f"ObservationKeyToModalityDict: {item} not found,"
+                      f" adding {item} to mapping with assumed low_dim modality!")
             self.__setitem__(item, "low_dim")
         return super(ObservationKeyToModalityDict, self).__getitem__(item)
 
@@ -905,35 +906,57 @@ class ImageModality(Modality):
     """
     name = "rgb"
 
+    # ImageNet mean and standard deviation for normalization
+    IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).float()
+    IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225]).float()
+
     @classmethod
     def _default_obs_processor(cls, obs):
         """
-        Given image fetched from dataset, process for network input. Converts array
-        to float (from uint8), normalizes pixels from range [0, 255] to [0, 1], and channel swaps
-        from (H, W, C) to (C, H, W).
-
-        Args:
-            obs (np.array or torch.Tensor): image array
-
-        Returns:
-            processed_obs (np.array or torch.Tensor): processed image
+        Given image fetched from dataset, process for network input.
+        Converts to float, normalizes using ImageNet stats, and channel swaps.
         """
-        return process_frame(frame=obs, channel_dim=3, scale=255.)
+        # Convert to float and swap channels
+        processed_obs = process_frame(frame=obs, channel_dim=3, scale=255.)
+
+        # Convert to tensor if not already
+        if not isinstance(processed_obs, torch.Tensor):
+            processed_obs = torch.from_numpy(processed_obs)
+
+        # Get the device of the input tensor
+        device = processed_obs.device
+
+        # Reshape and move the normalization tensors to the same device
+        mean = cls.IMAGENET_MEAN.to(device).view(-1, 1, 1)
+        std = cls.IMAGENET_STD.to(device).view(-1, 1, 1)
+
+        # Normalize using ImageNet stats
+        processed_obs = (processed_obs - mean) / std
+
+        return processed_obs
 
     @classmethod
     def _default_obs_unprocessor(cls, obs):
         """
         Given image prepared for network input, prepare for saving to dataset.
-        Inverse of @process_frame.
-
-        Args:
-            obs (np.array or torch.Tensor): image array
-
-        Returns:
-            unprocessed_obs (np.array or torch.Tensor): image passed through
-                inverse operation of @process_frame
+        Inverse of the processing operation.
         """
-        return TU.to_uint8(unprocess_frame(frame=obs, channel_dim=3, scale=255.))
+        # Convert to tensor if not already
+        if not isinstance(obs, torch.Tensor):
+            obs = torch.from_numpy(obs)
+        
+        # Get the device of the input tensor
+        device = obs.device
+        
+        # Reshape and move the normalization tensors to the same device
+        mean = cls.IMAGENET_MEAN.to(device).view(-1, 1, 1)
+        std = cls.IMAGENET_STD.to(device).view(-1, 1, 1)
+        
+        # Denormalize
+        unprocessed_obs = (obs * std) + mean
+        
+        # Denormalize and convert back to uint8
+        return TU.to_uint8(unprocess_frame(frame=unprocessed_obs, channel_dim=3, scale=255.))
 
 
 class DepthModality(Modality):
