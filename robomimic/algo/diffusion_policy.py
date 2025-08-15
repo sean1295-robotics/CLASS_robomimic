@@ -5,10 +5,10 @@ from typing import Callable, Union
 from collections import OrderedDict, deque
 from packaging.version import parse as parse_version
 from copy import deepcopy
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-# requires diffusers==0.11.1
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 from diffusers.training_utils import EMAModel
@@ -18,6 +18,7 @@ import robomimic.models.diffusion_policy_nets as DPNets
 import robomimic.utils.tensor_utils as TensorUtils
 import robomimic.utils.torch_utils as TorchUtils
 import robomimic.utils.obs_utils as ObsUtils
+import robomimic.utils.lang_utils as LangUtils
 
 from robomimic.algo import register_algo_factory_func, PolicyAlgo
 
@@ -94,6 +95,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 clip_sample=self.algo_config.ddpm.clip_sample,
                 prediction_type=self.algo_config.ddpm.prediction_type
             )
+            self.prediction_type = self.algo_config.ddpm.prediction_type
         elif self.algo_config.ddim.enabled:
             noise_scheduler = DDIMScheduler(
                 num_train_timesteps=self.algo_config.ddim.num_train_timesteps,
@@ -103,6 +105,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 steps_offset=self.algo_config.ddim.steps_offset,
                 prediction_type=self.algo_config.ddim.prediction_type
             )
+            self.prediction_type = self.algo_config.ddim.prediction_type
         else:
             raise RuntimeError()
         
@@ -118,11 +121,26 @@ class DiffusionPolicyUNet(PolicyAlgo):
         self.noise_scheduler = noise_scheduler
         self.ema = ema
         self.ema_nets = ema_nets
+        self.ema_nets.eval()
         self.action_check_done = False
         self.obs_queue = None
         self.action_queue = None
+        
+        if self.algo_config.class_weight:
+            distance = torch.load('/scratch/dcs3zc/droid_v101/joint_distance_l2_32.pth', weights_only=False)
+            print("torch.load('/scratch/dcs3zc/droid_v101/joint_distance_l2_32.pth', weights_only=False)", distance.shape)
+            # Initialize normalizer
+            from robomimic.utils.class_utils import PairwiseDistanceCDFNormalizer
+            self.normalizer = PairwiseDistanceCDFNormalizer(
+                torch.from_numpy(distance), 
+                quantile=0.01,
+                n_quantiles=1000
+            ).to_device('cuda')
+            del distance
+            import gc
+            gc.collect()
     
-    def process_batch_for_training(self, batch, pretrain=False):
+    def process_batch_for_training(self, batch):
         """
         Processes input batch from a data loader to filter out
         relevant information and prepare the batch for training.
@@ -136,33 +154,28 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 will be used for training 
         """
         To = self.algo_config.horizon.observation_horizon
-        Ta = self.algo_config.horizon.action_horizon
         Tp = self.algo_config.horizon.prediction_horizon
-        
-        if pretrain:
-            input_batch = dict()
-            input_batch["obs"] = {k: batch["obs"][k][:, :To, :] for k in batch["obs"]}
-            input_batch["dist"] = batch["dist"]
-            input_batch["index"] = batch["index"]
-            input_batch["temperature"] = batch["temperature"]
-        else:        
-            input_batch = dict()
-            input_batch["obs"] = {k: batch["obs"][k][:, :To, :] for k in batch["obs"]}
-            input_batch["goal_obs"] = batch.get("goal_obs", None) # goals may not be present
-            input_batch["actions"] = batch["actions"][:, :Tp, :]
+
+        input_batch = dict()
+        lang_emb_decoded = [inst.decode() if len(inst) else "Do something useful" for inst in batch["obs"]["lang_emb"]]                
+        batch["obs"]["lang_emb"] = LangUtils.batch_get_lang_emb(lang_emb_decoded)
+        batch["obs"]["lang_emb"] = batch["obs"]["lang_emb"].unsqueeze(1).repeat(1, To, 1)
             
-            # check if actions are normalized to [-1,1]
-            if not self.action_check_done:
-                actions = input_batch["actions"]
-                in_range = (-1 <= actions) & (actions <= 1)
-                all_in_range = torch.all(in_range).item()
-                if not all_in_range:
-                    raise ValueError("'actions' must be in range [-1,1] for Diffusion Policy! Check if hdf5_normalize_action is enabled.")
-                self.action_check_done = True
+        input_batch["obs"] = {k: batch["obs"][k][:, :To, :] for k in batch["obs"]}
+        input_batch["goal_obs"] = batch.get("goal_obs", None) # goals may not be present
+        input_batch["actions"] = batch["actions"][:, :Tp, :]
+        # # check if actions are normalized to [-1,1]
+        # if not self.action_check_done:
+        #     actions = input_batch["actions"]
+        #     in_range = (-1 <= actions) & (actions <= 1)
+        #     all_in_range = torch.all(in_range).item()
+        #     if not all_in_range:
+        #         raise ValueError("'actions' must be in range [-1,1] for Diffusion Policy!.")
+        #     self.action_check_done = True
         
         return TensorUtils.to_device(TensorUtils.to_float(input_batch), self.device)
         
-    def postprocess_batch_for_training(self, batch, obs_normalization_stats, pretrain=False):
+    def postprocess_batch_for_training(self, batch, obs_normalization_stats):
         """
         Does some operations (like channel swap, uint8 to float conversion, normalization)
         after @process_batch_for_training is called, in order to ensure these operations
@@ -187,7 +200,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
 
         # we will search the nested batch dictionary for the following special batch dict keys
         # and apply the processing function to their values (which correspond to observations)
-        obs_keys = ["obs"] if pretrain else ["obs", "next_obs", "goal_obs"]
+        obs_keys = ["obs", "next_obs", "goal_obs"]
 
         def recurse_helper(d):
             """
@@ -207,7 +220,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
         recurse_helper(batch)
         return batch
     
-    def train_on_batch(self, batch, epoch, validate=False, pretrain=False):
+    def train_on_batch(self, batch, epoch, validate=False):
         """
         Training on a single batch of data.
 
@@ -225,92 +238,141 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 that might be relevant for logging
         """
         with TorchUtils.maybe_no_grad(no_grad=validate):
-            info = super(DiffusionPolicyUNet, self).train_on_batch(batch, epoch, validate=validate)
-            if pretrain:
-                assert self.algo_config.horizon.observation_horizon == 1, \
-                    "Pretraining requires observation horizon to be 1, but got {}".format(self.algo_config.horizon.observation_horizon)
-                assert "dist" in batch and "index" in batch and "temperature" in batch, \
-                "Pretraining requires 'dist' and 'index' and 'temperature' in the batch!"
-                B = batch["temperature"].shape[0]  
-                img_features = []
-                # Deterministic order since self.observation_group_shapes is OrderedDict
-                lang_emb = None 
-                if "lang_emb" in batch["obs"]:
-                    lang_emb = batch["obs"]["lang_emb"]
-                for obs_group in self.nets["policy"]["obs_encoder"].observation_group_shapes["obs"]:
-                    if 'image' in obs_group:
-                        # pass through encoder
-                        img = batch["obs"][obs_group].squeeze(1)
-                        obs_randomizers = self.nets["policy"]["obs_encoder"].nets['obs'].obs_randomizers[obs_group]
-                        obs_net = self.nets["policy"]["obs_encoder"].nets['obs'].obs_nets[obs_group]
-                        # maybe process encoder input with randomizer
-                        for obs_randomizer in obs_randomizers:
-                            if obs_randomizer is not None:
-                                img = obs_randomizer.forward_in(img)        
-                        img_features.append(obs_net.forward(img, lang_emb))
-                img_features = torch.cat(img_features, dim=-1)                     
-                assert img_features.ndim == 2
+            info = super(DiffusionPolicyUNet, self).train_on_batch(batch, epoch, validate=validate)      
+            ### CLASS LOSS
+            def apply_indices_recursive(data, valid_indices):
+                """
+                Recursively apply indices to nested dictionaries and tensors.
                 
-                img_features = F.normalize(img_features, dim=1) 
-                sim_matrix = torch.div(torch.matmul(img_features, img_features.T), batch["temperature"])
+                Args:
+                    data: Can be a tensor, dict, or nested dict containing tensors
+                    valid_indices: Indices to apply for filtering
+                
+                Returns:
+                    Filtered data with same structure as input
+                """
+                if data is None:
+                    # Handle None values - return None as-is
+                    return None
+                elif isinstance(data, dict):
+                    # If it's a dictionary, recursively process each value
+                    result = {}
+                    for key, value in data.items():
+                        result[key] = apply_indices_recursive(value, valid_indices)
+                    return result
+                else:
+                    # Assume it's a tensor-like object that supports indexing
+                    return data[valid_indices]
+                
+            # Assuming sample['actions'] is already a single torch.Tensor
+            # with shape (num_actions_in_sample, sequence_length, num_features)
+            threshold = 0.05
+            valid_indices = torch.where(batch['actions'].std(dim = 1).max(dim = -1).values > threshold)[0]
+            # --- Post-processing using valid_indices ---
+            # You can directly use the `valid_indices` tensor to select the relevant actions
+            # from the original `all_actions_tensor`.
+            
+            # This will give you a new tensor containing only the actions that satisfy the condition.
+            # Shape: (num_valid_actions, sequence_length, num_features)
+            post_processed_batch = {
+                key: apply_indices_recursive(value, valid_indices) 
+                for key, value in batch.items()
+            }
+            
+            B = post_processed_batch["actions"].shape[0]                     
+            processed_actions = post_processed_batch['actions']
+            
+            # encode obs
+            inputs = {
+                "obs": post_processed_batch["obs"],
+                "goal": post_processed_batch["goal_obs"]
+            }
+            for k in self.obs_shapes:
+                # first two dimensions should be [B, T] for inputs
+                assert inputs["obs"][k].ndim - 2 == len(self.obs_shapes[k])
+            breakpoint()
+            obs_features = TensorUtils.time_distributed(inputs, self.nets["policy"]["obs_encoder"], inputs_as_kwargs=True)
+            assert obs_features.ndim == 3  # [B, T, D]
+
+            obs_cond = obs_features.flatten(start_dim=1)
+            
+            # sample noise to add to actions
+            noise = torch.randn(processed_actions.shape, device=self.device)
+            
+            # sample a diffusion iteration for each data point
+            timesteps = torch.randint(
+                0, self.noise_scheduler.config.num_train_timesteps, 
+                (B,), device=self.device
+            ).long()
+                        
+            # add noise to the clean actions according to the noise magnitude at each diffusion iteration
+            # (this is the forward diffusion process)
+            noisy_actions = self.noise_scheduler.add_noise(
+                processed_actions, noise, timesteps)
+            
+            # predict the noise residual
+            prediction = self.nets["policy"]["noise_pred_net"](
+                noisy_actions, timesteps, global_cond=obs_cond)
+            
+            # L2 loss
+            if self.prediction_type == "epsilon":
+                bc_loss = F.mse_loss(prediction, noise)
+            elif self.prediction_type == "sample":
+                bc_loss = F.mse_loss(prediction, processed_actions)
+            elif self.prediction_type == "v_prediction":
+                velocity = self.noise_scheduler.get_velocity(processed_actions, noise, timesteps)
+                bc_loss= F.mse_loss(prediction, velocity)
+            else:
+                raise TypeError(f"Prediction type: {self.prediction_type} not recognized.")
+                        
+            if self.algo_config.class_weight:
+                processed_actions = processed_actions.clone().detach()
+                processed_actions[..., 3:9] /= 2
+                
+                # Option : l2
+                processed_actions_flat = processed_actions.flatten(start_dim = 1)  # Shape: (B, T*D)
+                pairwise_distance = torch.cdist(processed_actions_flat, processed_actions_flat, p=2)  # Shape: (B, B)
+                
+                self_mask = torch.eye(pairwise_distance.shape[0]).to(pairwise_distance.device).bool()
+                pairwise_distance = pairwise_distance.masked_fill(self_mask, float('inf')).to(self.device)
+
+                cdf_vals = self.normalizer.distance_to_cdf(pairwise_distance)
+                dist_matrix = 1-cdf_vals
+                pos_mask = dist_matrix > 0            
+                
+                obs_cond_normalized = F.normalize(obs_cond, dim=1) 
+                temperature = 0.05
+                sim_matrix = torch.div(torch.matmul(obs_cond_normalized, obs_cond_normalized.T), temperature)
+                
                 self_mask = torch.eye(B, device=self.device, dtype=torch.bool)
-                index = batch["index"].to(torch.int)
-                pos_weights = batch["dist"][:, index].to(self.device)
+                pos_mask = pos_mask & ~self_mask
                 
-                logits_max, _ = torch.max(sim_matrix.masked_fill(self_mask, -float('inf')), dim=1, keepdim=True)                
+                # Compute log-softmax as before
+                with torch.no_grad():
+                    logits_max, _ = torch.max(sim_matrix.masked_fill(self_mask, -float('inf')), dim=1, keepdim=True)
+                
                 scaled_sim_stable = sim_matrix - logits_max
                 log_denom = torch.logsumexp(scaled_sim_stable.masked_fill(self_mask, float('-inf')), dim=1, keepdim=True)
-                log_prob = scaled_sim_stable - log_denom   
+                log_prob = scaled_sim_stable - log_denom
+                
+                pos_weights = dist_matrix.to(self.device) * pos_mask
                 pos_denom = pos_weights.sum(dim=1)
                 valid_samples_mask = pos_denom > 1e-6
                 
                 if not valid_samples_mask.any():
                     return torch.tensor(0.0, device=self.device, requires_grad=True)
-
+                
                 numerator = (pos_weights[valid_samples_mask] * log_prob[valid_samples_mask]).sum(dim=1)
-                loss = - (numerator / pos_denom[valid_samples_mask]).mean()
-
-            else:
-                B = batch["actions"].shape[0]                    
-                actions = batch["actions"]
-                
-                # encode obs
-                inputs = {
-                    "obs": batch["obs"],
-                    "goal": batch["goal_obs"]
-                }
-                for k in self.obs_shapes:
-                    # first two dimensions should be [B, T] for inputs
-                    assert inputs["obs"][k].ndim - 2 == len(self.obs_shapes[k])
-                obs_features = TensorUtils.time_distributed(inputs, self.nets["policy"]["obs_encoder"], inputs_as_kwargs=True)
-                assert obs_features.ndim == 3  # [B, T, D]
-
-                obs_cond = obs_features.flatten(start_dim=1)
-                
-                # sample noise to add to actions
-                noise = torch.randn(actions.shape, device=self.device)
-                
-                # sample a diffusion iteration for each data point
-                timesteps = torch.randint(
-                    0, self.noise_scheduler.config.num_train_timesteps, 
-                    (B,), device=self.device
-                ).long()
-                
-                # add noise to the clean actions according to the noise magnitude at each diffusion iteration
-                # (this is the forward diffusion process)
-                noisy_actions = self.noise_scheduler.add_noise(
-                    actions, noise, timesteps)
-                
-                # predict the noise residual
-                noise_pred = self.nets["policy"]["noise_pred_net"](
-                    noisy_actions, timesteps, global_cond=obs_cond)
-                
-                # L2 loss
-                loss = F.mse_loss(noise_pred, noise)
+                class_loss = - (numerator / pos_denom[valid_samples_mask]).mean()    
+            else:               
+                class_loss = torch.tensor([0]).to(bc_loss.device)   
+            loss = bc_loss + class_loss * self.algo_config.class_weight
             
             # logging
             losses = {
-                "l2_loss": loss
+                "bc_loss": bc_loss,
+                "class_loss": class_loss,
+                "loss": loss
             }
             info["losses"] = TensorUtils.detach(losses)
 
@@ -327,7 +389,8 @@ class DiffusionPolicyUNet(PolicyAlgo):
                     self.ema.step(self.nets.parameters())
                 
                 step_info = {
-                    "policy_grad_norms": policy_grad_norms
+                    "policy_grad_norms": policy_grad_norms,
+                    "Valid_data_percentage": float(B / batch['actions'].shape[0])
                 }
                 info.update(step_info)
 
@@ -345,9 +408,11 @@ class DiffusionPolicyUNet(PolicyAlgo):
             loss_log (dict): name -> summary statistic
         """
         log = super(DiffusionPolicyUNet, self).log_info(info)
-        log["Loss"] = info["losses"]["l2_loss"].item()
-        if "policy_grad_norms" in info:
-            log["Policy_Grad_Norms"] = info["policy_grad_norms"]
+        log["Loss"] = info["losses"]["loss"].item()
+        log["BC_Loss"] = info["losses"]["bc_loss"].item()
+        log["CLASS_Loss"] = info["losses"]["class_loss"].item()            
+        log["Policy_Grad_Norms"] = info["policy_grad_norms"]
+        log["Valid_data_percentage"] = info["Valid_data_percentage"]
         return log
     
     def reset(self):
@@ -393,10 +458,11 @@ class DiffusionPolicyUNet(PolicyAlgo):
             
             # run inference
             # [1,T,Da]
-            action_sequence = self._get_action_trajectory(obs_dict=obs_dict)
-            
+            start = To - 1
+            end = start + Ta
+            action_sequence = self._get_action_trajectory(obs_dict=obs_dict)[0,start:end]
             # put actions into the queue
-            self.action_queue.extend(action_sequence[0])
+            self.action_queue.extend(action_sequence)
         
         # has action, execute from left to right
         # [Da]
@@ -406,10 +472,9 @@ class DiffusionPolicyUNet(PolicyAlgo):
         action = action.unsqueeze(0)
         return action
         
-    def _get_action_trajectory(self, obs_dict, goal_dict=None):
-        assert not self.nets.training
-        To = self.algo_config.horizon.observation_horizon
-        Ta = self.algo_config.horizon.action_horizon
+    def _get_action_trajectory(self, obs_dict, goal_dict=None, validate=False):
+        if not validate:
+            assert not self.nets.training
         Tp = self.algo_config.horizon.prediction_horizon
         action_dim = self.ac_dim
         if self.algo_config.ddpm.enabled is True:
@@ -464,11 +529,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 sample=naction
             ).prev_sample
 
-        # process action using Ta
-        start = To - 1
-        end = start + Ta
-        action = naction[:,start:end]
-        return action
+        return naction
 
     def serialize(self):
         """

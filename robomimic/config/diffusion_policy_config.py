@@ -77,3 +77,6 @@ class DiffusionPolicyConfig(BaseConfig):
         self.algo.ddim.set_alpha_to_one = True
         self.algo.ddim.steps_offset = 0
         self.algo.ddim.prediction_type = 'epsilon'
+        
+        # CLASS parameters
+        self.algo.class_weight = 0.0 # set to 0.0 to disable class weights

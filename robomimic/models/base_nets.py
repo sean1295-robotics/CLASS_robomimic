@@ -653,7 +653,6 @@ class FiLMLayer(ConvBase):
         x = (1 + gamma) * x + beta
         return self.relu(x)
 
-
 class ResNet18ConvFiLM(ConvBase):
     """
     A ResNet18 block that can be used to process input images and uses FiLM for language conditioning.
@@ -675,45 +674,30 @@ class ResNet18ConvFiLM(ConvBase):
                 (a convolution where input channels are modified to encode spatial pixel location)
         """
         super(ResNet18ConvFiLM, self).__init__()
-        net = vision_models.resnet18(pretrained=pretrained)
-
-        # assert LangUtils.LANG_COND_ENABLED
-        # if lang_emb_dim is None:
-        #     # figure out lang_emb_dim by doing some quick inference
-        #     lang_emb_dim = LangUtils.get_lang_emb("hi").shape[0]
-
+        
+        # Get ResNet18 - use same pattern as ResNet18Conv
+        net = vision_models.resnet18(weights=(vision_models.ResNet18_Weights.DEFAULT if pretrained else None))
+        
+        # Handle input channels - use same pattern as ResNet18Conv
         if input_coord_conv:
             net.conv1 = CoordConv2d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)
         elif input_channel != 3:
             net.conv1 = nn.Conv2d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-        # cut the last fc layer
+        
+        # Store the backbone (without avgpool and fc) - same as ResNet18Conv
         self._input_coord_conv = input_coord_conv
         self._input_channel = input_channel
-        # self.nets = torch.nn.Sequential(*(list(net.children())[:-2]))
-
-        # Split up resnet into parts
-        layers = nn.ModuleList(net.children())
-        base_block = []
-        conv_blocks = []
-        for layer in layers:
-            if isinstance(layer, nn.Sequential):
-                for sub_layer in layer:
-                    conv_blocks.append(sub_layer)
-            elif len(conv_blocks) == 0:
-                base_block.append(layer)
-
-        self._base_block = nn.Sequential(*base_block)
-        self._conv_blocks = nn.ModuleList(conv_blocks)
-
-        film_layers = []
-        current_channels = self._base_block(torch.rand((1, input_channel, 3, 3))).shape[1]
-        for conv in conv_blocks:
-            current_channels = conv(torch.rand((1, current_channels, 3, 3))).shape[1]
-            film_layers.append(FiLMLayer(lang_emb_dim, current_channels))
-
-        self._film_layers = nn.ModuleList(film_layers)
-        self._output_channels = current_channels
+        self.nets = torch.nn.Sequential(*(list(net.children())[:-2]))
+        
+        # Create FiLM layers for each residual layer group
+        # ResNet18 channel progression: layer1=64, layer2=128, layer3=256, layer4=512
+        conv_block_channels = [64, 128, 256, 512]
+        self.film_layer1 = FiLMLayer(lang_emb_dim, conv_block_channels[0])
+        self.film_layer2 = FiLMLayer(lang_emb_dim, conv_block_channels[1]) 
+        self.film_layer3 = FiLMLayer(lang_emb_dim, conv_block_channels[2])
+        self.film_layer4 = FiLMLayer(lang_emb_dim, conv_block_channels[3])
+        
+        self._output_channels = 512  # Final ResNet18 channel count
 
     def output_shape(self, input_shape):
         """
@@ -733,19 +717,38 @@ class ResNet18ConvFiLM(ConvBase):
         return [self._output_channels, out_h, out_w]
 
     def forward(self, inputs, lang_emb):
-        x = self._base_block(inputs)
-        for conv, film in zip(self._conv_blocks, self._film_layers):
-            x = conv(x)
-            x = film(x, lang_emb)
+        # Pass through the ResNet backbone layer by layer with FiLM conditioning
+        x = inputs
+        
+        # Base layers: conv1, bn1, relu, maxpool
+        for i in range(4):
+            x = self.nets[i](x)
+        
+        # Layer 1 + FiLM
+        x = self.nets[4](x)  # layer1
+        x = self.film_layer1(x, lang_emb)
+        
+        # Layer 2 + FiLM
+        x = self.nets[5](x)  # layer2
+        x = self.film_layer2(x, lang_emb)
+        
+        # Layer 3 + FiLM
+        x = self.nets[6](x)  # layer3
+        x = self.film_layer3(x, lang_emb)
+        
+        # Layer 4 + FiLM
+        x = self.nets[7](x)  # layer4
+        x = self.film_layer4(x, lang_emb)
         
         return x
 
     def __repr__(self):
         """Pretty print network."""
         header = '{}'.format(str(self.__class__.__name__))
-        return header + '(input_channel={}, input_coord_conv={})'.format(self._input_channel, self._input_coord_conv)
-
-
+        return header + '(input_channel={}, input_coord_conv={})'.format(
+            self._input_channel, self._input_coord_conv
+        )
+        
 class R3MConv(ConvBase):
     """
     Base class for ConvNets pretrained with R3M (https://arxiv.org/abs/2203.12601)

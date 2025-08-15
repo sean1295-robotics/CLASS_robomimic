@@ -1,0 +1,17 @@
+
+============= Initialized Observation Utils with Obs Spec =============
+
+using obs modality: low_dim with keys: ['eef_quat', 'gripper_pos', 'eef_pos']
+using obs modality: rgb with keys: ['table_cam']
+using obs modality: depth with keys: []
+using obs modality: scan with keys: []
+run failed with error:
+'NoneType' object is not iterable
+
+Traceback (most recent call last):
+  File "/sfs/gpfs/tardis/home/dcs3zc/robomimic/robomimic/scripts/train.py", line 609, in main
+    train(config, device=device, resume=args.resume, pretrain=args.pretrain)
+  File "/sfs/gpfs/tardis/home/dcs3zc/robomimic/robomimic/scripts/train.py", line 182, in train
+    for dataset_cfg in config.train.data:
+TypeError: 'NoneType' object is not iterable
+

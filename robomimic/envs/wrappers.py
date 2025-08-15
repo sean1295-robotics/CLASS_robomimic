@@ -201,8 +201,9 @@ class FrameStackWrapper(EnvWrapper):
         self.update_obs(obs, action=action, reset=False)
         # update frame history
         for k in obs:
-            # make sure to have leading dim of 1 for easy concatenation
-            self.obs_history[k].append(obs[k][None])
+            if k in self.obs_history:
+                # make sure to have leading dim of 1 for easy concatenation
+                self.obs_history[k].append(obs[k][None])
         obs_ret = self._get_stacked_obs_from_history()
         return obs_ret, r, done, info
 

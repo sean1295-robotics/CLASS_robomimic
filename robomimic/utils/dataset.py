@@ -112,7 +112,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         self.lang = lang
         self._lang_emb = None
         if lang is not None:
-            self._lang_emb = LangUtils.get_lang_emb(self.lang)
+            self._lang_emb = LangUtils.get_lang_emb(self.lang).cpu()
 
         # get all keys that needs to be fetched
         self.obs_keys = tuple(obs_keys)

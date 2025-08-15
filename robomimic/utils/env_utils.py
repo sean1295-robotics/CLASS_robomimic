@@ -5,6 +5,7 @@ in dataset files.
 """
 from copy import deepcopy
 import robomimic.envs.env_base as EB
+import robomimic.utils.lang_utils as LangUtils
 from robomimic.utils.log_utils import log_warning
 
 
@@ -229,7 +230,7 @@ def create_env_from_metadata(
     env_kwargs = env_meta["env_kwargs"]
     env_kwargs["env_name"] = env_name
     lang = env_meta.get("lang", None)
-
+    print("lang is {}".format(lang))
     env = create_env(
         env_type=env_type,
         render=render, 
@@ -336,10 +337,64 @@ def set_env_specific_obs_processing(env_meta=None, env_type=None, env=None):
 def wrap_env_from_config(env, config):
     """
     Wraps environment using the provided Config object to determine which wrappers
-    to use (if any).
-    """
+    to use (if any).    """
+        
+    if config.train.data_format == "droid_rlds":
+        def custom_reset(unset_ep_meta=True):
+            # Call original reset
+            base_env = env.env.env
+            if unset_ep_meta:
+                base_env.unset_ep_meta()
+            base_env.reset()
+            state = base_env.sim.get_state()            
+            # Apply your custom camera setup
+            xml = base_env.sim.model.get_xml()
+            mover_body_name = "agentview_cameramover"
+            
+            import xml.etree.ElementTree as ET
+            from scipy.spatial.transform import Rotation as R
+            import robosuite.utils.transform_utils as T
+            import numpy as np
+            def modify_xml_for_camera_movement(mover_body_name, xml, camera_name):
+                tree = ET.fromstring(xml)
+                wb = tree.find("worldbody")
+
+                camera_elem = None
+                cameras = wb.findall("camera")
+                for camera in cameras:
+                    if camera.get("name") == camera_name:
+                        camera_elem = camera
+                        break
+                assert camera_elem is not None
+                mocap = ET.SubElement(wb, "body")
+                mocap.set("name", mover_body_name)
+                mocap.set("mocap", "true")
+                mocap.set("pos", camera.get("pos"))
+                mocap.set("quat", camera.get("quat"))
+                new_camera = ET.SubElement(mocap, "camera")
+                new_camera.set("mode", "fixed")
+                new_camera.set("name", camera.get("name"))
+                new_camera.set("pos", "0 0 0")
+
+                wb.remove(camera_elem)
+                return ET.tostring(tree, encoding="utf8").decode("utf8")
+            
+            modified_xml = modify_xml_for_camera_movement(mover_body_name, xml, "agentview")  
+            base_env.reset_from_xml_string(modified_xml)
+            base_env.sim.set_state(state)            
+            base_env.sim.data.set_mocap_pos("agentview_cameramover", np.array([-0.9,  0.9,  1.6]))
+            base_env.sim.data.set_mocap_quat("agentview_cameramover", np.array([-0.25208203, -0.16394702,  0.51997352,  0.79950207]))
+            base_env.sim.forward()
+            obs = base_env._get_observations(force_update=True)
+            if env._lang_emb is not None:
+                obs[LangUtils.LANG_EMB_OBS_KEY] = np.array(env._lang_emb)
+            return obs
+        
+        # Override the reset method
+        env.reset = custom_reset
+        
     if ("frame_stack" in config.train) and (config.train.frame_stack > 0):
         from robomimic.envs.wrappers import FrameStackWrapper
         env = FrameStackWrapper(env, num_frames=config.train.frame_stack)
-
+        
     return env

@@ -624,8 +624,363 @@ class CropRandomizer(Randomizer):
         msg = header + "(input_shape={}, crop_size=[{}, {}], num_crops={})".format(
             self.input_shape, self.crop_height, self.crop_width, self.num_crops)
         return msg
+    
+import torch.nn.functional as F
+from typing import List, Tuple, Optional
 
+class SquareCropNormalizer(Randomizer):
+    """
+    Crop square regions based on input image height, then resize to 224x224.
+    During training: random crop with size (height * 0.9, height * 0.9)
+    During eval: center crop with size (height * 0.9, height * 0.9)
+    Assumes input images are rectangular with w > h.
+    """
+    
+    def __init__(
+        self,
+        crop_factor: float = 0.9,
+        output_size: int = 224,
+        pos_enc: bool = False,
+    ):
+        """
+        Args:
+            crop_factor (float): factor to multiply height by for crop size (default: 0.9)
+            output_size (int): final output size after resize (default: 224)
+            pos_enc (bool): if True, add 2 channels to encode spatial location
+        """
+        super(SquareCropNormalizer, self).__init__()
+        
+        self.crop_factor = crop_factor
+        self.output_size = output_size
+        self.pos_enc = pos_enc
 
+    def _get_crop_size(self, input_tensor: torch.Tensor) -> int:
+        """
+        Dynamically calculate crop size based on input height.
+        """
+        height = input_tensor.shape[-2]        
+        crop_size = int(height * self.crop_factor)
+        return crop_size
+
+    def output_shape_in(self, input_shape: Optional[Tuple[int, ...]] = None) -> List[int]:
+        """
+        Compute output shape for forward_in operation.
+        """
+        if input_shape is not None:
+            channels = input_shape[0] if len(input_shape) >= 3 else 3
+        else:
+            channels = 3  # Default assumption
+            
+        out_c = channels + 2 if self.pos_enc else channels
+        return [out_c, self.output_size, self.output_size]
+
+    def output_shape_out(self, input_shape: Optional[Tuple[int, ...]] = None) -> List[int]:
+        """
+        Compute output shape for forward_out operation.
+        """
+        if input_shape is not None:
+            return list(input_shape)
+        else:
+            channels = 3 + 2 if self.pos_enc else 3
+            return [channels, self.output_size, self.output_size]
+
+    def _forward_in(self, inputs: torch.Tensor) -> torch.Tensor:
+        """
+        Training forward pass: random square crop + resize to 224x224.
+        """
+        assert len(inputs.shape) >= 3, "Input must have at least (C, H, W) dimensions"
+        # Ensure 4D input for batch processing
+        if len(inputs.shape) == 3:
+            inputs = inputs.unsqueeze(0)
+            squeeze_output = True
+        else:
+            squeeze_output = False
+        
+        batch_size, channels, height, width = inputs.shape
+        crop_size = self._get_crop_size(inputs)
+        
+        # Ensure crop size doesn't exceed image dimensions
+        if crop_size > height or crop_size > width:
+            raise ValueError(f"Crop size {crop_size} exceeds image dimensions {height}x{width}")
+        
+        # Random crop coordinates
+        max_h_start = height - crop_size
+        max_w_start = width - crop_size
+        
+        # Generate random crops for each image in batch
+        crops = []
+        for b in range(batch_size):
+            h_start = torch.randint(0, max_h_start + 1, (1,)).item() if max_h_start > 0 else 0
+            w_start = torch.randint(0, max_w_start + 1, (1,)).item() if max_w_start > 0 else 0
+            
+            crop = inputs[b:b+1, :, h_start:h_start+crop_size, w_start:w_start+crop_size]
+            
+            # Add position encoding if requested
+            if self.pos_enc:
+                crop = self._add_position_encoding(crop, h_start, w_start, height, width)
+            
+            crops.append(crop)
+        
+        # Concatenate all crops
+        output = torch.cat(crops, dim=0)
+        
+        # Resize to target size
+        output = F.interpolate(output, size=(self.output_size, self.output_size), 
+                             mode='bilinear', align_corners=False)
+        
+        # Handle original 3D input
+        if squeeze_output:
+            output = output.squeeze(0)
+        
+        # Ensure 4D input for batch processing
+        if len(inputs.shape) == 3:
+            inputs = inputs.unsqueeze(0)
+            squeeze_output = True
+        else:
+            squeeze_output = False
+        
+        batch_size, channels, height, width = inputs.shape
+        crop_size = self._get_crop_size(inputs)
+        
+        # Ensure crop size doesn't exceed image dimensions
+        if crop_size > height or crop_size > width:
+            raise ValueError(f"Crop size {crop_size} exceeds image dimensions {height}x{width}")
+        
+        # Random crop coordinates
+        max_h_start = height - crop_size
+        max_w_start = width - crop_size
+        
+        # Generate random crops for each image in batch
+        crops = []
+        for b in range(batch_size):
+            h_start = torch.randint(0, max_h_start + 1, (1,)).item() if max_h_start > 0 else 0
+            w_start = torch.randint(0, max_w_start + 1, (1,)).item() if max_w_start > 0 else 0
+            
+            crop = inputs[b:b+1, :, h_start:h_start+crop_size, w_start:w_start+crop_size]
+            
+            # Add position encoding if requested
+            if self.pos_enc:
+                crop = self._add_position_encoding(crop, h_start, w_start, height, width)
+            
+            crops.append(crop)
+        
+        # Concatenate all crops
+        output = torch.cat(crops, dim=0)
+        
+        # Resize to target size
+        output = F.interpolate(output, size=(self.output_size, self.output_size), 
+                             mode='bilinear', align_corners=False)
+        
+        # Handle original 3D input
+        if squeeze_output:
+            output = output.squeeze(0)
+        return output
+
+    def _forward_in_eval(self, inputs: torch.Tensor) -> torch.Tensor:
+        """
+        Evaluation forward pass: center square crop + resize to 224x224.
+        """
+        assert len(inputs.shape) >= 3, "Input must have at least (C, H, W) dimensions"
+        
+        # Ensure 4D input for batch processing
+        if len(inputs.shape) == 3:
+            inputs = inputs.unsqueeze(0)
+            squeeze_output = True
+        else:
+            squeeze_output = False
+        
+        height, width = inputs.shape[2], inputs.shape[3]
+        crop_size = self._get_crop_size(inputs)
+        
+        # Ensure crop size doesn't exceed image dimensions
+        if crop_size > height or crop_size > width:
+            raise ValueError(f"Crop size {crop_size} exceeds image dimensions {height}x{width}")
+        
+        # Center crop coordinates
+        h_start = (height - crop_size) // 2
+        w_start = (width - crop_size) // 2
+        
+        # Perform center crop
+        output = inputs[:, :, h_start:h_start+crop_size, w_start:w_start+crop_size]
+        
+        # Add position encoding if requested
+        if self.pos_enc:
+            output = self._add_position_encoding(output, h_start, w_start, height, width)
+        
+        # Resize to target size
+        output = F.interpolate(output, size=(self.output_size, self.output_size), 
+                             mode='bilinear', align_corners=False)
+        
+        # Handle original 3D input
+        if squeeze_output:
+            output = output.squeeze(0)
+            
+        return output
+
+    def _forward_out(self, inputs: torch.Tensor) -> torch.Tensor:
+        """
+        Pass-through since we only have 1 crop.
+        """
+        return inputs
+
+    def _add_position_encoding(self, crop: torch.Tensor, h_start: int, w_start: int, 
+                             orig_height: int, orig_width: int) -> torch.Tensor:
+        """
+        Add 2 channels encoding the spatial location of the crop in the original image.
+        """
+        batch_size, channels, crop_h, crop_w = crop.shape
+        device = crop.device
+        crop_size = crop_h  # Assuming square crop
+        
+        # Normalized coordinates (0 to 1)
+        h_pos = h_start / max(1, orig_height - crop_size)
+        w_pos = w_start / max(1, orig_width - crop_size)
+        
+        # Create position encoding channels
+        h_pos_channel = torch.full((batch_size, 1, crop_h, crop_w), h_pos, device=device)
+        w_pos_channel = torch.full((batch_size, 1, crop_h, crop_w), w_pos, device=device)
+        
+        # Concatenate with original crop
+        return torch.cat([crop, h_pos_channel, w_pos_channel], dim=1)
+
+    def _visualize(self, pre_random_input: torch.Tensor, randomized_input: torch.Tensor, 
+                  num_samples_to_visualize: int = 2):
+        """
+        Visualize the cropping and resizing process.
+        """
+        batch_size = pre_random_input.shape[0]
+        random_sample_inds = torch.randint(0, batch_size, size=(min(num_samples_to_visualize, batch_size),))
+        
+        # Convert to numpy and transpose for visualization
+        pre_random_input_np = pre_random_input[random_sample_inds].cpu().numpy()
+        pre_random_input_np = pre_random_input_np.transpose((0, 2, 3, 1))  # [B, C, H, W] -> [B, H, W, C]
+        
+        # Handle randomized input (single crop only)
+        randomized_input_np = randomized_input[random_sample_inds].cpu().numpy()
+        randomized_input_np = randomized_input_np.transpose((0, 2, 3, 1))  # [B, C, H, W] -> [B, H, W, C]
+        randomized_input_np = randomized_input_np[:, None, ...]  # Add crops dimension for visualization
+        
+        # Call visualization function (assuming it exists)
+        visualize_image_randomizer(
+            pre_random_input_np,
+            randomized_input_np,
+            randomizer_name=f'{self.__class__.__name__}'
+        )
+
+    def __repr__(self) -> str:
+        """Pretty print network."""
+        header = f'{self.__class__.__name__}'
+        msg = (f"{header}(crop_factor={self.crop_factor}, output_size={self.output_size}, "
+               f"pos_enc={self.pos_enc})")
+        return msg
+
+class DroidRandomizer(Randomizer):
+    """
+    Randomizer for Droid, which does no-op during training, and performs a center
+    crop on inputs during evaluation.
+    """
+    def __init__(
+        self,
+        input_shape,
+        crop_height=224,
+        crop_width=224,
+        num_crops=1,
+        pos_enc=False,
+    ):
+        """
+        Args:
+            input_shape (tuple, list): shape of input (not including batch dimension)
+            crop_height (int): crop height
+            crop_width (int): crop width
+            num_crops (int): ignored. kept for compatibility.
+            pos_enc (bool): ignored. kept for compatibility.
+        """
+        super(DroidRandomizer, self).__init__()
+
+        assert len(input_shape) == 3 # (C, H, W)
+        assert crop_height < input_shape[1]
+        assert crop_width < input_shape[2]
+        
+        self.input_shape = input_shape
+        self.crop_height = crop_height
+        self.crop_width = crop_width
+        self.num_crops = num_crops
+        self.pos_enc = pos_enc
+
+    def output_shape_in(self, input_shape=None):
+        """
+        Function to compute output shape from inputs to this module. Corresponds to
+        the @forward_in operation, where raw inputs (usually observation modalities)
+        are passed in.
+
+        Args:
+            input_shape (iterable of int): shape of input. Does not include batch dimension.
+                Some modules may not need this argument, if their output does not depend
+                on the size of the input, or if they assume fixed size input.
+
+        Returns:
+            out_shape ([int]): list of integers corresponding to output shape
+        """
+        out_c = self.input_shape[0]
+        return [out_c, self.crop_height, self.crop_width]
+
+    def output_shape_out(self, input_shape=None):
+        """
+        Function to compute output shape from inputs to this module. Corresponds to
+        the @forward_out operation, where processed inputs (usually encoded observation
+        modalities) are passed in.
+
+        Args:
+            input_shape (iterable of int): shape of input. Does not include batch dimension.
+                Some modules may not need this argument, if their output does not depend
+                on the size of the input, or if they assume fixed size input.
+
+        Returns:
+            out_shape ([int]): list of integers corresponding to output shape
+        """
+        return list(input_shape)
+
+    def _forward_in(self, inputs):
+        """
+        No-op during training.
+        """
+        return inputs
+
+    def _forward_in_eval(self, inputs):
+        """
+        Do center crops during eval.
+        """
+        assert len(inputs.shape) >= 3 # must have at least (C, H, W) dimensions
+        inputs = inputs.permute(*range(inputs.dim()-3), inputs.dim()-2, inputs.dim()-1, inputs.dim()-3)
+        out = ObsUtils.center_crop(inputs, self.crop_height, self.crop_width)
+        out = out.permute(*range(out.dim()-3), out.dim()-1, out.dim()-3, out.dim()-2)
+        return out
+
+    def _forward_out(self, inputs):
+        """
+        No-op during training.
+        """
+        return inputs
+
+    def _forward_out_eval(self, inputs):
+        """
+        No-op during evaluation.
+        """
+        return inputs
+    
+    def _visualize(self, pre_random_input, randomized_input, num_samples_to_visualize=2):
+        """
+        No-op during training, as per the spec.
+        """
+        pass
+
+    def __repr__(self):
+        """Pretty print network."""
+        header = '{}'.format(str(self.__class__.__name__))
+        msg = header + "(input_shape={}, crop_size=[{}, {}])".format(
+            self.input_shape, self.crop_height, self.crop_width)
+        return msg
+    
 class ColorRandomizer(Randomizer):
     """
     Randomly sample color jitter at input, and then average across color jtters at output.

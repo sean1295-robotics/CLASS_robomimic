@@ -105,31 +105,56 @@ def optimizer_from_optim_params(net_optim_params, net):
     """
     optimizer_type = net_optim_params.get("optimizer_type", "adam")
     lr = net_optim_params["learning_rate"]["initial"]
-
+    encoder_lr = lr * net_optim_params["learning_rate"].get("encoder_lr_reduction_rate", 1.0)
+    
+    # Create parameter groups with different learning rates
+    param_groups = []
+    
+    # Check if network has obs_encoder and assign it the reduced learning rate
+    if hasattr(net, 'obs_encoder'):
+        param_groups.append({
+            'params': net.obs_encoder.parameters(),
+            'lr': encoder_lr
+        })
+    
+    # Collect all other parameters (excluding obs_encoder if it exists)
+    other_params = []
+    for name, module in net.named_children():
+        if name != 'obs_encoder':
+            other_params.extend(module.parameters())
+    
+    if other_params:
+        param_groups.append({
+            'params': other_params,
+            'lr': lr
+        })
+    
+    # If no obs_encoder exists, use all parameters with regular lr
+    if not param_groups:
+        param_groups = [{'params': net.parameters(), 'lr': lr}]
+        
+    weight_decay = net_optim_params["regularization"]["L2"]
+    
     if optimizer_type == "adam":
         return optim.Adam(
-            params=net.parameters(),
-            lr=lr,
-            weight_decay=net_optim_params["regularization"]["L2"],
+            param_groups,
+            weight_decay=weight_decay,
         )
     elif optimizer_type == "adamw":
         return optim.AdamW(
-            params=net.parameters(),
-            lr=lr,
-            weight_decay=net_optim_params["regularization"]["L2"],
+            param_groups,
+            weight_decay=weight_decay,
         )
     elif optimizer_type == "sgd":
         return optim.SGD(
-            params=net.parameters(),
-            lr=lr,
-            weight_decay=net_optim_params["regularization"]["L2"],
+            param_groups,
+            weight_decay=weight_decay,
         )
     elif optimizer_type == "lars":
         from utils.optim_utils import LARS
         return LARS(
-            params=net.parameters(),
-            lr=lr,
-            weight_decay=net_optim_params["regularization"]["L2"],
+            param_groups,
+            weight_decay=weight_decay,
         )
 
 

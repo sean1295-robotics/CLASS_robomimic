@@ -104,7 +104,7 @@ class BaseConfig(Config):
         # envs to evaluate model on (assuming rollouts are enabled), to override the metadata stored in dataset
         self.experiment.env = None                                  # no need to set this (unless you want to override); if set, uses env metadata from the first dataset in self.train.data
         self.experiment.additional_envs = None                      # additional environments that should get evaluated; uses env metadata from the first dataset in self.train.data
-
+        self.experiment.additional_langs = None                     # additional language instructions that should get evaluated; uses lang metadata from the first dataset in self.train.data
 
         ## rendering config ##
         self.experiment.render = False                              # render on-screen or not
@@ -239,7 +239,7 @@ class BaseConfig(Config):
         self.train.max_grad_norm = None  # clip gradient norms (see `backprop_for_loss` function in torch_utils.py) 
         
         self.train.data_format = "robomimic" # either "robomimic" or "droid"
-
+        self.train.normalize_action = False  # whether to normalize actions in the dataset (e.g., for BC, Diffusion, etc.)
         # list of observation keys to shuffle randomly in the dataset.
         # must be list of tuples pairs, with each pair representing
         # the corresponding observation key groups to shuffle

@@ -94,7 +94,7 @@ def get_exp_dir(config, auto_remove_exp_dir=False, resume=False):
     return log_dir, output_dir, video_dir, time_dir
 
 
-def load_data_for_training(config, obs_keys, pretrain = False):
+def load_data_for_training(config, obs_keys):
     """
     Data loading at the start of an algorithm.
 
@@ -132,16 +132,16 @@ def load_data_for_training(config, obs_keys, pretrain = False):
             )
             assert set(train_demo_keys).isdisjoint(set(valid_demo_keys)), "training demonstrations overlap with " \
                 "validation demonstrations!"
-        train_dataset = dataset_factory(config, obs_keys, filter_by_attribute=train_filter_by_attribute, pretrain=pretrain)
-        valid_dataset = dataset_factory(config, obs_keys, filter_by_attribute=valid_filter_by_attribute, pretrain=pretrain)
+        train_dataset = dataset_factory(config, obs_keys, filter_by_attribute=train_filter_by_attribute)
+        valid_dataset = dataset_factory(config, obs_keys, filter_by_attribute=valid_filter_by_attribute)
     else:
-        train_dataset = dataset_factory(config, obs_keys, filter_by_attribute=train_filter_by_attribute, pretrain=pretrain)
+        train_dataset = dataset_factory(config, obs_keys, filter_by_attribute=train_filter_by_attribute)
         valid_dataset = None
 
     return train_dataset, valid_dataset
 
 
-def dataset_factory(config, obs_keys, filter_by_attribute=None, dataset_path=None, pretrain=False):
+def dataset_factory(config, obs_keys, filter_by_attribute=None, dataset_path=None):
     """
     Create a SequenceDataset instance to pass to a torch DataLoader.
 
@@ -189,10 +189,6 @@ def dataset_factory(config, obs_keys, filter_by_attribute=None, dataset_path=Non
         hdf5_normalize_obs=config.train.hdf5_normalize_obs,
         filter_by_attribute=filter_by_attribute,
     )
-    
-    if pretrain:
-        ds_kwargs['temperature'] = config.train.temperature
-        ds_kwargs['dist_quantile'] = config.train.dist_quantile
 
     ds_kwargs["hdf5_path"] = [ds_cfg["path"] for ds_cfg in config.train.data]
     ds_kwargs["filter_by_attribute"] = [ds_cfg.get("filter_key", filter_by_attribute) for ds_cfg in config.train.data]
@@ -202,7 +198,7 @@ def dataset_factory(config, obs_keys, filter_by_attribute=None, dataset_path=Non
     meta_ds_kwargs = dict()
 
     dataset = get_dataset(
-        ds_class=CLASS_SequenceDataset if pretrain else SequenceDataset,
+        ds_class=SequenceDataset,
         ds_kwargs=ds_kwargs,
         ds_weights=ds_weights,
         ds_langs=ds_langs,
@@ -474,7 +470,6 @@ def run_rollout_param(
             # get action from policy
             policy_ob = ob_dict
             ac = policy(ob=policy_ob, goal=goal_dict)
-
             # play action
             ob_dict, r, done, _ = env.step(ac)
 
@@ -605,7 +600,6 @@ def rollout_with_stats(
         video_str = "_epoch_{}.mp4".format(epoch) if epoch is not None else ".mp4" 
         video_paths = { k : os.path.join(video_dir, "{}{}".format(k, video_str)) for k in envs }
         video_writers = { k : imageio.get_writer(video_paths[k], fps=20) for k in envs }
-
     if include_nonparam_rollout:
         base_policy = policy.policy
         retrieval_obs = [] 
@@ -649,8 +643,7 @@ def rollout_with_stats(
                     ac = PyUtils.action_dict_to_vector(ac_dict, action_keys=action_keys)
                 acs.append(TensorUtils.to_tensor(ac))
             retrieval_obs = torch.cat(retrieval_obs, dim=0)
-            acs = torch.cat(acs, dim=0)        
-
+            acs = torch.cat(acs, dim=0)
         
     for env_key, env in envs.items():
         env_video_writer = None
@@ -858,7 +851,7 @@ def save_model(model, config, env_meta, shape_meta, ckpt_path, variable_state=No
     print("save checkpoint to {}".format(ckpt_path))
 
 
-def run_epoch(model, data_loader, epoch, pretrain = False, validate=False, num_steps=None, obs_normalization_stats=None):
+def run_epoch(model, data_loader, epoch, validate=False, num_steps=None, obs_normalization_stats=None):
     """
     Run an epoch of training or validation.
 
@@ -893,11 +886,9 @@ def run_epoch(model, data_loader, epoch, pretrain = False, validate=False, num_s
 
     step_log_all = []
     timing_stats = dict(Data_Loading=[], Process_Batch=[], Train_Batch=[], Log_Info=[])
-    start_time = time.time()
 
     data_loader_iter = iter(data_loader)
     for _ in LogUtils.custom_tqdm(range(num_steps)):
-
         # load next batch from data loader
         try:
             t = time.time()
@@ -908,16 +899,16 @@ def run_epoch(model, data_loader, epoch, pretrain = False, validate=False, num_s
             t = time.time()
             batch = next(data_loader_iter)
         timing_stats["Data_Loading"].append(time.time() - t)
-
         # process batch for training
         t = time.time()
-        input_batch = model.process_batch_for_training(batch, pretrain=pretrain)
-        input_batch = model.postprocess_batch_for_training(input_batch, obs_normalization_stats=obs_normalization_stats, pretrain=pretrain)
+        batch['obs'].keys()
+        input_batch = model.process_batch_for_training(batch)
+        input_batch = model.postprocess_batch_for_training(input_batch, obs_normalization_stats=obs_normalization_stats)
         timing_stats["Process_Batch"].append(time.time() - t)
 
         # forward and backward pass
         t = time.time()
-        info = model.train_on_batch(input_batch, epoch, validate=validate, pretrain=pretrain)
+        info = model.train_on_batch(input_batch, epoch, validate=validate)
         timing_stats["Train_Batch"].append(time.time() - t)
         model.on_gradient_step()
 
@@ -925,8 +916,23 @@ def run_epoch(model, data_loader, epoch, pretrain = False, validate=False, num_s
         t = time.time()
         step_log = model.log_info(info)
         step_log_all.append(step_log)
-        timing_stats["Log_Info"].append(time.time() - t)
+        timing_stats["Log_Info"].append(time.time() - t)        
 
+        with torch.no_grad():
+            try:
+                t = time.time()
+                batch = next(data_loader_iter)
+            except StopIteration:
+                # reset for next dataset pass
+                data_loader_iter = iter(data_loader)
+                t = time.time()
+                batch = next(data_loader_iter)
+            input_batch = model.process_batch_for_training(batch)
+            input_batch = model.postprocess_batch_for_training(input_batch, obs_normalization_stats=obs_normalization_stats)
+            actions = input_batch.pop("actions")
+            actions_pred = model._get_action_trajectory(obs_dict=input_batch["obs"], goal_dict=input_batch["goal_obs"], validate=True)
+            val_mse = F.mse_loss(actions, actions_pred)
+            
     # flatten and take the mean of the metrics
     step_log_dict = {}
     for i in range(len(step_log_all)):
@@ -935,6 +941,7 @@ def run_epoch(model, data_loader, epoch, pretrain = False, validate=False, num_s
                 step_log_dict[k] = []
             step_log_dict[k].append(step_log_all[i][k])
     step_log_all = dict((k, float(np.mean(v))) for k, v in step_log_dict.items())
+    step_log_all["Val_MSE"] = val_mse.item()
 
     # add in timing stats
     for k in timing_stats:

@@ -1,0 +1,90 @@
+{
+  "os":  "Linux-4.18.0-553.47.1.el8_10.x86_64-x86_64-with-glibc2.28",
+  "python":  "CPython 3.11.11",
+  "startedAt":  "2025-08-05T07:05:17.098123Z",
+  "args":  [
+    "--task",
+    "Isaac-Stack-Cube-Franka-IK-Rel-v0",
+    "--algo",
+    "diffusion_policy",
+    "--cfg_entry_point_file",
+    "robomimic/exps/templates/diffusion_policy_isaac_lab.json",
+    "--dataset",
+    "/scratch/dcs3zc/IsaacLab/mimic_vision_dataset.hdf5"
+  ],
+  "program":  "/sfs/gpfs/tardis/home/dcs3zc/robomimic/robomimic/scripts/train_isaac_lab.py",
+  "codePath":  "robomimic/scripts/train_isaac_lab.py",
+  "codePathLocal":  "robomimic/scripts/train_isaac_lab.py",
+  "git":  {
+    "remote":  "https://github.com/sean1295-robotics/CLASS_robomimic.git",
+    "commit":  "87ca47c90f6d090367bb9e6079aa7a8d920481e5"
+  },
+  "email":  "sean1295@vt.edu",
+  "root":  "/sfs/gpfs/tardis/home/dcs3zc/robomimic/logs/robomimic/Isaac-Stack-Cube-Franka-IK-Rel-v0/dp_imn_three_stack/20250805030506/logs",
+  "host":  "udc-an36-31",
+  "executable":  "/home/dcs3zc/anaconda3/envs/bcl/bin/python",
+  "cpu_count":  128,
+  "cpu_count_logical":  128,
+  "gpu":  "NVIDIA A100-SXM4-80GB",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "706906132480",
+      "used":  "588993257472"
+    }
+  },
+  "memory":  {
+    "total":  "2164315439104"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA A100-SXM4-80GB",
+      "memoryTotal":  "85899345920",
+      "cudaCores":  6912,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-7066db6c-d08d-89bf-550f-563e3b4f5314"
+    }
+  ],
+  "cudaVersion":  "12.8",
+  "slurm":  {
+    "cluster_name":  "shen",
+    "conf":  "/opt/slurm/current/etc/slurm.conf",
+    "cpus_on_node":  "4",
+    "cpus_per_task":  "4",
+    "export_env":  "NONE",
+    "get_user_env":  "1",
+    "gpus_on_node":  "1",
+    "gtids":  "0",
+    "job_account":  "lia-lab-members",
+    "job_cpus_per_node":  "4",
+    "job_end_time":  "1754601105",
+    "job_gid":  "100",
+    "job_gpus":  "7",
+    "job_id":  "2011896",
+    "job_name":  "ood_vscode",
+    "job_nodelist":  "udc-an36-31",
+    "job_num_nodes":  "1",
+    "job_partition":  "gpu-a100-80",
+    "job_qos":  "normal",
+    "job_start_time":  "1754341905",
+    "job_uid":  "15368237",
+    "job_user":  "dcs3zc",
+    "jobid":  "2011896",
+    "localid":  "0",
+    "mem_per_node":  "785408",
+    "nnodes":  "1",
+    "nodeid":  "0",
+    "nodelist":  "udc-an36-31",
+    "oom_kill_step":  "0",
+    "prio_process":  "0",
+    "procid":  "0",
+    "submit_dir":  "/var/www/ood/apps/sys/dashboard",
+    "submit_host":  "udc-ba37-31c1",
+    "task_pid":  "3490395",
+    "tasks_per_node":  "1",
+    "topology_addr":  "udc-an36-31",
+    "topology_addr_pattern":  "node",
+    "tres_per_task":  "cpu=4"
+  },
+  "writerId":  "wkwhbbfxgxb8x8dezrlewui8trtlp4a2"
+}

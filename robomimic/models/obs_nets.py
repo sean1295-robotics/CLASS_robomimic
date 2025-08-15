@@ -287,6 +287,7 @@ class ObservationEncoder(Module):
             for rand in self.obs_randomizers[k]:
                 if rand is not None:
                     x = rand.forward_in(x)
+                    
             # maybe process with obs net
             if self.obs_nets[k] is not None:
                 if (ind in rgb_inds_need_lang_cond):

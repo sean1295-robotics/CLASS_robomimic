@@ -129,7 +129,7 @@ def get_env_metadata_from_dataset(dataset_path, ds_format='robomimic', set_env_s
     return env_meta
 
 
-def get_shape_metadata_from_dataset(dataset_config, action_keys, all_obs_keys=None, verbose=False):
+def get_shape_metadata_from_dataset(dataset_config, batch, action_keys, all_obs_keys=None, verbose=False):
     """
     Retrieves shape metadata from dataset.
 
@@ -149,45 +149,74 @@ def get_shape_metadata_from_dataset(dataset_config, action_keys, all_obs_keys=No
             :`'use_images'`: bool, whether or not image modalities are present
             :`'use_depths'`: bool, whether or not depth modalities are present
     """
-
+    assert dataset_config is not None or batch is not None, "dataset_config or batch must be provided"
+    
     shape_meta = {}
-
-    # read demo file for some metadata
-    dataset_path = os.path.expanduser(dataset_config["path"])
-    f = h5py.File(dataset_path, "r")
-    
-    demo_id = list(f["data"].keys())[0]
-    demo = f["data/{}".format(demo_id)]
-    
-    for key in action_keys:
-        assert len(demo[key].shape) == 2 # shape should be (B, D)
-    action_dim = sum([demo[key].shape[1] for key in action_keys])
-    shape_meta["ac_dim"] = action_dim
-
-    # observation dimensions
     all_shapes = OrderedDict()
 
-    if all_obs_keys is None:
-        # use all modalities present in the file
-        all_obs_keys = [k for k in demo["obs"]]
+    if dataset_config is not None:
+        assert "path" in dataset_config, "Expected 'path' key in dataset config."
+        # read demo file for some metadata
+        dataset_path = os.path.expanduser(dataset_config["path"])
+        f = h5py.File(dataset_path, "r")
+        
+        demo_id = list(f["data"].keys())[0]
+        demo = f["data/{}".format(demo_id)]
+        
+        for key in action_keys:
+            assert len(demo[key].shape) == 2 # shape should be (B, D)
+        action_dim = sum([demo[key].shape[1] for key in action_keys])
+        shape_meta["ac_dim"] = action_dim
 
-    for k in sorted(all_obs_keys):
-        if k == LangUtils.LANG_EMB_OBS_KEY:
-            # NOTE: currently supporting fixed language embedding per dataset
-            ## that is fetched from dataset config and not from file
-            assert "lang" in dataset_config, "Expected 'lang' key in dataset config."
-            initial_shape = LangUtils.get_lang_emb_shape()
-        else:
-            initial_shape = demo["obs/{}".format(k)].shape[1:]
-        if verbose:
-            print("obs key {} with shape {}".format(k, initial_shape))
-        # Store processed shape for each obs key
-        all_shapes[k] = ObsUtils.get_processed_shape(
-            obs_modality=ObsUtils.OBS_KEYS_TO_MODALITIES[k],
-            input_shape=initial_shape,
-        )
+        if all_obs_keys is None:
+            # use all modalities present in the file
+            all_obs_keys = [k for k in demo["obs"]]
 
-    f.close()
+        for k in sorted(all_obs_keys):
+            if LangUtils.LANG_EMB_OBS_KEY in k:
+                # NOTE: currently supporting fixed language embedding per dataset
+                ## that is fetched from dataset config and not from file
+                assert "lang" in dataset_config, "Expected 'lang' key in dataset config."
+                initial_shape = LangUtils.get_lang_emb_shape()
+                all_shapes[LangUtils.LANG_EMB_OBS_KEY] = ObsUtils.get_processed_shape(
+                    obs_modality=ObsUtils.OBS_KEYS_TO_MODALITIES[k],
+                    input_shape=initial_shape,
+                )
+            else:
+                initial_shape = demo["obs/{}".format(k)].shape[1:]
+                all_shapes[k] = ObsUtils.get_processed_shape(
+                    obs_modality=ObsUtils.OBS_KEYS_TO_MODALITIES[k],
+                    input_shape=initial_shape,
+                )
+            if verbose:
+                print("obs key {} with shape {}".format(k, initial_shape))
+            # Store processed shape for each obs key
+
+        f.close()
+    
+    else:
+        if all_obs_keys is None:
+            # use all modalities present in the file
+            all_obs_keys = [k for k in batch["obs"]]
+
+        # use batch to infer shapes
+        for k in batch["obs"]:
+            if LangUtils.LANG_EMB_OBS_KEY in k:
+                # NOTE: currently supporting fixed language embedding per dataset
+                ## that is fetched from dataset config and not from file
+                initial_shape = LangUtils.get_lang_emb_shape()
+                all_shapes[LangUtils.LANG_EMB_OBS_KEY] = ObsUtils.get_processed_shape(
+                    obs_modality=ObsUtils.OBS_KEYS_TO_MODALITIES[k],
+                    input_shape=initial_shape,
+                )
+            else:
+                initial_shape = batch["obs"][k].shape[2:]
+                all_shapes[k] = ObsUtils.get_processed_shape(
+                    obs_modality=ObsUtils.OBS_KEYS_TO_MODALITIES[k],
+                    input_shape=initial_shape,
+                )
+        shape_meta = {'ac_dim': batch["actions"].shape[-1]}
+
 
     shape_meta['all_shapes'] = all_shapes
     shape_meta['all_obs_keys'] = all_obs_keys

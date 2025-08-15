@@ -1,7 +1,7 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_droid_film",
+        "name": "dp_imn_droid_film_class",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -18,19 +18,24 @@
             "on_best_rollout_return": false,
             "on_best_rollout_success_rate": true
         },
-        "epoch_every_n_steps": null,
+        "epoch_every_n_steps": 6250, 
         "validation_epoch_every_n_steps": 10,
         "env": null,
-        "additional_envs": null,
+        "additional_envs": ["Lift", "Stack", "Door"],
+        "additional_langs": [
+            "Pick up the red cube and lift up.",
+            "Pick up the red cube and place on top of green cube.",
+            "Rotate the door knob and open the door."
+        ],
         "render": false,
         "render_video": true,
         "keep_all_videos": false,
         "video_skip": 5,
         "rollout": {
             "enabled": true,
-            "n": 50,
+            "n": 2,
             "horizon": 400,
-            "rate": 25,
+            "rate": 10,
             "warmstart": 0,
             "terminate_on_success": true
         },
@@ -48,16 +53,26 @@
         "ckpt_path": null
     },
     "train": {
+        "data_format": "droid_rlds",
+        "data_path": "/scratch/dcs3zc",
+        "dataset_names": ["droid_v101"],
+        "normalize_action" : true,
+        "shuffle_buffer_size": 400000,
+        "sample_weights": [1],
+        "subsample_length": 100,
+        "num_parallel_calls": 200,
+        "traj_transform_threads": 48,
+        "traj_read_threads": 48,   
         "data": [
             {
                 "path": "/scratch/dcs3zc/robomimic/robomimic_v151/square/ph/image_v15.hdf5",
-                "lang": "Insert the object into the square rod."
+                "lang": "Pick up the brown handle and insert it into the brown square rod."
             }
         ],
         "output_dir": "/scratch/dcs3zc/robomimic/robomimic_v151",
         "normalize_weights_by_ds_size": false,
         "num_data_workers": 0,
-        "hdf5_cache_mode": "all",
+        "hdf5_cache_mode": "low_dim",
         "hdf5_use_swmr": true,
         "hdf5_load_next_obs": false,
         "hdf5_normalize_obs": false,
@@ -68,9 +83,7 @@
         "frame_stack": 1,
         "pad_frame_stack": true,
         "dataset_keys": [
-            "action_dict/abs_pos", 
-            "action_dict/abs_rot_6d", 
-            "action_dict/gripper",
+            "actions", 
             "rewards",
             "dones",
             "lang_emb"
@@ -92,9 +105,14 @@
                 "rot_conversion": null 
             }
         },
+        "action_shapes": [
+            [1, 3],
+            [1, 6],
+            [1, 1]
+        ],
         "goal_mode": null,
         "cuda": true,
-        "batch_size": 128,
+        "batch_size": 512,
         "num_epochs": 5000,
         "seed": 1,
         "max_grad_norm": null,
@@ -156,9 +174,10 @@
             "set_alpha_to_one": true,
             "steps_offset": 0,
             "prediction_type": "epsilon"
-        }
+        },
+        "class_weight": 1.0
     },
-    "observation": {
+    "observation": { 
         "modalities": {
             "obs": {
                 "low_dim": [
@@ -167,7 +186,7 @@
                     "robot0_gripper_qpos",
                     "lang_emb"
                 ],
-                "rgb": ["agentview_image"],
+                "rgb": ["agentview_image", "robot0_eye_in_hand_image"],
                 "depth": [],
                 "scan": []
             },
@@ -188,17 +207,18 @@
             "rgb": {
                 "core_class": "VisualCoreLanguageConditioned",
                 "core_kwargs": {
+                    "input_shape": [3, 224, 224],
                     "feature_dimension": 64,
                     "flatten": true,
                     "backbone_class": "ResNet18ConvFiLM",
                     "backbone_kwargs": {
-                        "pretrained": false,
+                        "pretrained": true,
                         "input_coord_conv": false
                     },
                     "pool_class": null,
                     "pool_kwargs": {}
                 },
-                "obs_randomizer_class": "CropRandomizer",
+                "obs_randomizer_class": "DroidRandomizer",
                 "obs_randomizer_kwargs": {
                     "input_shape": [3, 224, 224],
                     "crop_height": 224,
