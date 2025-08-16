@@ -899,9 +899,9 @@ def run_epoch(model, data_loader, epoch, validate=False, num_steps=None, obs_nor
             t = time.time()
             batch = next(data_loader_iter)
         timing_stats["Data_Loading"].append(time.time() - t)
+        
         # process batch for training
         t = time.time()
-        batch['obs'].keys()
         input_batch = model.process_batch_for_training(batch)
         input_batch = model.postprocess_batch_for_training(input_batch, obs_normalization_stats=obs_normalization_stats)
         timing_stats["Process_Batch"].append(time.time() - t)

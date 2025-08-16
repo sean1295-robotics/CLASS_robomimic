@@ -127,11 +127,11 @@ class DiffusionPolicyUNet(PolicyAlgo):
         self.action_queue = None
         
         if self.algo_config.class_weight:
-            distance = torch.load('/scratch/dcs3zc/droid_v101/joint_distance_l2_32.pth', weights_only=False)
-            print("torch.load('/scratch/dcs3zc/droid_v101/joint_distance_l2_32.pth', weights_only=False)", distance.shape)
+            distance = torch.load('/scratch/dcs3zc/droid_101/joint_distance_l2_32.pth', weights_only=False)
+            print('/scratch/dcs3zc/droid_101/joint_distance_l2_32.pth', distance.shape)
             # Initialize normalizer
             from robomimic.utils.class_utils import PairwiseDistanceCDFNormalizer
-            self.normalizer = PairwiseDistanceCDFNormalizer(
+            self.dist_normalizer = PairwiseDistanceCDFNormalizer(
                 torch.from_numpy(distance), 
                 quantile=0.01,
                 n_quantiles=1000
@@ -239,53 +239,14 @@ class DiffusionPolicyUNet(PolicyAlgo):
         """
         with TorchUtils.maybe_no_grad(no_grad=validate):
             info = super(DiffusionPolicyUNet, self).train_on_batch(batch, epoch, validate=validate)      
-            ### CLASS LOSS
-            def apply_indices_recursive(data, valid_indices):
-                """
-                Recursively apply indices to nested dictionaries and tensors.
-                
-                Args:
-                    data: Can be a tensor, dict, or nested dict containing tensors
-                    valid_indices: Indices to apply for filtering
-                
-                Returns:
-                    Filtered data with same structure as input
-                """
-                if data is None:
-                    # Handle None values - return None as-is
-                    return None
-                elif isinstance(data, dict):
-                    # If it's a dictionary, recursively process each value
-                    result = {}
-                    for key, value in data.items():
-                        result[key] = apply_indices_recursive(value, valid_indices)
-                    return result
-                else:
-                    # Assume it's a tensor-like object that supports indexing
-                    return data[valid_indices]
-                
-            # Assuming sample['actions'] is already a single torch.Tensor
-            # with shape (num_actions_in_sample, sequence_length, num_features)
-            threshold = 0.05
-            valid_indices = torch.where(batch['actions'].std(dim = 1).max(dim = -1).values > threshold)[0]
-            # --- Post-processing using valid_indices ---
-            # You can directly use the `valid_indices` tensor to select the relevant actions
-            # from the original `all_actions_tensor`.
-            
-            # This will give you a new tensor containing only the actions that satisfy the condition.
-            # Shape: (num_valid_actions, sequence_length, num_features)
-            post_processed_batch = {
-                key: apply_indices_recursive(value, valid_indices) 
-                for key, value in batch.items()
-            }
-            
-            B = post_processed_batch["actions"].shape[0]                     
-            processed_actions = post_processed_batch['actions']
+            ### CLASS LOSS            
+            B = batch["actions"].shape[0]                     
+            actions = batch['actions']
             
             # encode obs
             inputs = {
-                "obs": post_processed_batch["obs"],
-                "goal": post_processed_batch["goal_obs"]
+                "obs": batch["obs"],
+                "goal": batch["goal_obs"]
             }
             for k in self.obs_shapes:
                 # first two dimensions should be [B, T] for inputs
@@ -295,38 +256,9 @@ class DiffusionPolicyUNet(PolicyAlgo):
 
             obs_cond = obs_features.flatten(start_dim=1)
             
-            # sample noise to add to actions
-            noise = torch.randn(processed_actions.shape, device=self.device)
-            
-            # sample a diffusion iteration for each data point
-            timesteps = torch.randint(
-                0, self.noise_scheduler.config.num_train_timesteps, 
-                (B,), device=self.device
-            ).long()
-                        
-            # add noise to the clean actions according to the noise magnitude at each diffusion iteration
-            # (this is the forward diffusion process)
-            noisy_actions = self.noise_scheduler.add_noise(
-                processed_actions, noise, timesteps)
-            
-            # predict the noise residual
-            prediction = self.nets["policy"]["noise_pred_net"](
-                noisy_actions, timesteps, global_cond=obs_cond)
-            
-            # L2 loss
-            if self.prediction_type == "epsilon":
-                bc_loss = F.mse_loss(prediction, noise)
-            elif self.prediction_type == "sample":
-                bc_loss = F.mse_loss(prediction, processed_actions)
-            elif self.prediction_type == "v_prediction":
-                velocity = self.noise_scheduler.get_velocity(processed_actions, noise, timesteps)
-                bc_loss= F.mse_loss(prediction, velocity)
-            else:
-                raise TypeError(f"Prediction type: {self.prediction_type} not recognized.")
-                        
             if self.algo_config.class_weight:
-                processed_actions = processed_actions.clone().detach()
-                processed_actions[..., 3:9] /= 2
+                processed_actions = actions.clone().detach()
+                # processed_actions[..., 3:9] /= 2
                 
                 # Option : l2
                 processed_actions_flat = processed_actions.flatten(start_dim = 1)  # Shape: (B, T*D)
@@ -335,12 +267,12 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 self_mask = torch.eye(pairwise_distance.shape[0]).to(pairwise_distance.device).bool()
                 pairwise_distance = pairwise_distance.masked_fill(self_mask, float('inf')).to(self.device)
 
-                cdf_vals = self.normalizer.distance_to_cdf(pairwise_distance)
+                cdf_vals = self.dist_normalizer.distance_to_cdf(pairwise_distance)
                 dist_matrix = 1-cdf_vals
                 pos_mask = dist_matrix > 0            
                 
                 obs_cond_normalized = F.normalize(obs_cond, dim=1) 
-                temperature = 0.05
+                temperature = 0.07
                 sim_matrix = torch.div(torch.matmul(obs_cond_normalized, obs_cond_normalized.T), temperature)
                 
                 self_mask = torch.eye(B, device=self.device, dtype=torch.bool)
@@ -364,7 +296,38 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 numerator = (pos_weights[valid_samples_mask] * log_prob[valid_samples_mask]).sum(dim=1)
                 class_loss = - (numerator / pos_denom[valid_samples_mask]).mean()    
             else:               
-                class_loss = torch.tensor([0]).to(bc_loss.device)   
+                class_loss = torch.tensor([0]).to(actions.device)  
+            
+            # sample noise to add to actions
+            noise = torch.randn(actions.shape, device=self.device)
+            
+            # sample a diffusion iteration for each data point
+            timesteps = torch.randint(
+                0, self.noise_scheduler.config.num_train_timesteps, 
+                (B,), device=self.device
+            ).long()
+                        
+            # add noise to the clean actions according to the noise magnitude at each diffusion iteration
+            # (this is the forward diffusion process)
+            actions = actions.clip(-1, 1)
+            noisy_actions = self.noise_scheduler.add_noise(
+                actions, noise, timesteps)
+            
+            # predict the noise residual
+            prediction = self.nets["policy"]["noise_pred_net"](
+                noisy_actions, timesteps, global_cond=obs_cond)
+            
+            # L2 loss
+            if self.prediction_type == "epsilon":
+                bc_loss = F.mse_loss(prediction, noise)
+            elif self.prediction_type == "sample":
+                bc_loss = F.mse_loss(prediction, actions)
+            elif self.prediction_type == "v_prediction":
+                velocity = self.noise_scheduler.get_velocity(actions, noise, timesteps)
+                bc_loss= F.mse_loss(prediction, velocity)
+            else:
+                raise TypeError(f"Prediction type: {self.prediction_type} not recognized.")
+                     
             loss = bc_loss + class_loss * self.algo_config.class_weight
             
             # logging

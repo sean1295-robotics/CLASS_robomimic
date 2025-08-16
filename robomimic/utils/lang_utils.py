@@ -37,19 +37,29 @@ def get_lang_emb(lang):
     return lang_emb
 
 def batch_get_lang_emb(lang):
-    assert isinstance(lang, list), "Input should be a list of strings"    
-    tokens = tz(
-        text=lang,                   # the sentence to be encoded
-        add_special_tokens=True,             # Add [CLS] and [SEP]
-        max_length=77,  # maximum possible length of a sentence
+    assert isinstance(lang, list), "Input should be a list of strings"
+
+    # Get unique strings to avoid redundant computation
+    unique_lang = sorted(list(set(lang)))
+
+    # Process only the unique strings
+    unique_tokens = tz(
+        text=unique_lang,
+        add_special_tokens=True,
+        max_length=77,
         padding="max_length",
-        truncation=True,                    # ADD THIS: Enable truncation
-        return_attention_mask=True,        # Generate the attention mask
-        return_tensors="pt",               # ask the function to return PyTorch tensors
+        truncation=True,
+        return_attention_mask=True,
+        return_tensors="pt",
     )
-    tokens = {k:v.to(device) for k,v in tokens.items()}
-    lang_emb = lang_emb_model(**tokens).last_hidden_state.sum(1)
-    # lang_emb = lang_emb_model(**tokens)['text_embeds'].detach()
+    unique_tokens = {k: v.to(device) for k, v in unique_tokens.items()}
+    unique_lang_emb = lang_emb_model(**unique_tokens).last_hidden_state.sum(1)
+
+    # Create a mapping from each unique string to its embedding
+    emb_map = {text: emb for text, emb in zip(unique_lang, unique_lang_emb)}
+
+    # Populate the final list by looking up embeddings for each element
+    lang_emb = torch.stack([emb_map[s] for s in lang])
 
     return lang_emb
 

@@ -448,7 +448,6 @@ def policy_from_checkpoint(device=None, ckpt_path=None, ckpt_dict=None, verbose=
     # maybe restore observation normalization stats
     obs_normalization_stats = ckpt_dict.get("obs_normalization_stats", None)
     if obs_normalization_stats is not None:
-        assert config.train.hdf5_normalize_obs
         for m in obs_normalization_stats:
             for k in obs_normalization_stats[m]:
                 obs_normalization_stats[m][k] = np.array(obs_normalization_stats[m][k])

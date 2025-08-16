@@ -480,26 +480,27 @@ def normalize_dict(dict, normalization_stats):
     # ensure we have statistics for each modality key in the dict
     assert set(dict.keys()).issubset(normalization_stats), f"dict keys {list(dict.keys())} \
          should be subset of normalization stats keys {list(normalization_stats.keys())}"
-
+    
     for m in dict:
-        offset = normalization_stats[m]["offset"][0]
-        scale = normalization_stats[m]["scale"][0]
+        if normalization_stats[m] is not None:
+            offset = normalization_stats[m]["offset"][0]
+            scale = normalization_stats[m]["scale"][0]
 
-        # check shape consistency
-        o_num_dims = len(offset.shape)
-        shape_len_diff = len(offset.shape) - o_num_dims
-        assert shape_len_diff >= 0, "shape length mismatch in @normalize_dict"
-        assert dict[m].shape[-o_num_dims:] == offset.shape, "shape mismatch in @normalize_obs"
+            # check shape consistency
+            o_num_dims = len(offset.shape)
+            shape_len_diff = len(offset.shape) - o_num_dims
+            assert shape_len_diff >= 0, "shape length mismatch in @normalize_dict"
+            assert dict[m].shape[-o_num_dims:] == offset.shape, "shape mismatch in @normalize_obs"
 
-        # Obs can have one or more leading batch dims - prepare for broadcasting.
-        # 
-        # As an example, if the obs has shape [B, T, D] and our offset / scale stats are shape [D]
-        # then we should pad the stats to shape [1, 1, D].
-        reshape_padding = tuple([1] * shape_len_diff)
-        offset = offset.reshape(reshape_padding + tuple(offset.shape))
-        scale = scale.reshape(reshape_padding + tuple(scale.shape))
+            # Obs can have one or more leading batch dims - prepare for broadcasting.
+            # 
+            # As an example, if the obs has shape [B, T, D] and our offset / scale stats are shape [D]
+            # then we should pad the stats to shape [1, 1, D].
+            reshape_padding = tuple([1] * shape_len_diff)
+            offset = offset.reshape(reshape_padding + tuple(offset.shape))
+            scale = scale.reshape(reshape_padding + tuple(scale.shape))
 
-        dict[m] = (dict[m] - offset) / scale
+            dict[m] = (dict[m] - offset) / scale            
 
     return dict
 

@@ -33,23 +33,14 @@ import torch
 from torch.utils.data import DataLoader
 import tensorflow as tf
 
-import robosuite
-import robomimic
-import robomimic.utils.action_utils as ActionUtils
 import robomimic.utils.train_utils as TrainUtils
 import robomimic.utils.torch_utils as TorchUtils
 import robomimic.utils.obs_utils as ObsUtils
-import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.file_utils as FileUtils
-from robomimic.utils.dataset import action_stats_to_normalization_stats
 from robomimic.config import config_factory
 from robomimic.algo import algo_factory, RolloutPolicy
-from robomimic.utils.rlds_utils import robomimic_transform, robomimic_dataset_transform, roboarena_transform, roboarena_dataset_transform, TorchRLDSDataset
+from robomimic.utils.rlds_utils import DroidRldsDataset
 from robomimic.utils.log_utils import PrintLogger, DataLogger, flush_warnings
-
-from octo.data.dataset import make_dataset_from_rlds, make_interleaved_dataset
-from octo.data.utils.data_utils import get_dataset_statistics, combine_dataset_statistics
-from octo.utils.spec import ModuleSpec
 
 def train(config, device, resume=False):
     """
@@ -81,92 +72,55 @@ def train(config, device, resume=False):
     ObsUtils.initialize_obs_utils_with_config(config)
     obs_normalization_stats = None        
 
-    ds_format = config.train.data_format
-
     # FOR RLDS
     tf.config.set_visible_devices([], "GPU")
-    obs_modalities = config.observation.modalities.obs.rgb
-    # NOTE: Must be 2 cam for now, can clean this up later
-    assert(len(obs_modalities) == 2)
-    BASE_DATASET_KWARGS = {
-            "data_dir": config.train.data_path,
-            "image_obs_keys": {"primary1": "exterior_image_1_left", "primary2": "exterior_image_2_left",  "secondary": "wrist_image_left"},
-            "state_obs_keys": ["arm_joint_pos", "gripper_pos"], #["robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos"],
-            "language_key": ["language_instruction", "language_instruction_2", "language_instruction_3"],
-            "norm_skip_keys":  ["proprio"],
-            "action_proprio_normalization_type": "bounds",
-            "absolute_action_mask": [True] * 8,
-            "action_normalization_mask": [config.train.normalize_action] * 8,
-            "standardize_fn": roboarena_dataset_transform,
-        }
-    dataset_names = config.train.dataset_names
-    filter_functions = [[ModuleSpec.create(
-                            "robomimic.utils.rlds_utils:filter_success"
-                            )] if  "droid" in d_name else [] \
-                        for d_name in dataset_names]
-    dataset_kwargs_list = [
-        {"name": d_name, 
-            "filter_functions": f_functions, 
-            **BASE_DATASET_KWARGS} for d_name, f_functions in zip(dataset_names, filter_functions)
-    ]
+    obs_normalization_stats, action_normalization_stats = None, None
     
-    # Compute combined normalization stats
-    combined_dataset_statistics = combine_dataset_statistics(
-        [make_dataset_from_rlds(**dataset_kwargs, train=True)[1] for dataset_kwargs in dataset_kwargs_list]
-    )
-    
-    dataset_kwargs = {
-        "dataset_kwargs_list": dataset_kwargs_list,
-        "sample_weights": config.train.sample_weights,
-        "train": True,
-        "shuffle_buffer_size": config.train.shuffle_buffer_size,
-        "batch_size": None,  # batching will be handled in PyTorch Dataloader object
-        "balance_weights": False,
-        "dataset_statistics": combined_dataset_statistics,
-        "traj_transform_kwargs": {
-            "window_size": config.algo.horizon.observation_horizon,
-            "future_action_window_size": config.algo.horizon.prediction_horizon,
-            "subsample_length": config.train.subsample_length,
-            "skip_unlabeled": False,    # to skip all trajectories without language
-        },
-        "frame_transform_kwargs": {
-            "image_augment_kwargs": {
-                "augment_order": ["random_resized_crop", "random_brightness", "random_contrast", "random_saturation"],
-                "random_resized_crop": {
-                    "scale": [0.8, 1.0],
-                    "ratio": [0.9, 1.1],
-                },
-                "random_brightness": [0.3],
-                "random_contrast": [0.7, 1.3],
-                "random_saturation": [0.7, 1.3],
-                "random_hue": [0.3],
-            },
-            "num_parallel_calls": config.train.num_parallel_calls,
-        },
-        "traj_transform_threads": config.train.traj_transform_threads,
-        "traj_read_threads": config.train.traj_read_threads,
-    }
-    
-    init_dataset_kwargs = deepcopy(dataset_kwargs)
-    init_dataset_kwargs["shuffle_buffer_size"] = 1
-    
-    init_trainset = make_interleaved_dataset(**init_dataset_kwargs)        
-    init_trainset = init_trainset.map(roboarena_transform, num_parallel_calls=config.train.traj_transform_threads)
-    action_normalization_stats = None
-    
-    if config.train.normalize_action:
-        action_stats = ActionUtils.get_action_stats_dict(combined_dataset_statistics["action"], config.train.action_keys, config.train.action_shapes)
-        action_normalization_stats = action_stats_to_normalization_stats(action_stats, config.train.action_config)
-        print(action_normalization_stats)     
+    # dtw_train_loader = DroidRldsDataset(
+    #     config.train.data_path,
+    #     config.train.dataset_names[0],
+    #     action_chunk_size=config.algo.horizon.prediction_horizon,
+    #     batch_size=500,
+    #     action_space=config.train.action_space,
+    #     shuffle=False,
+    #     shuffle_buffer_size = 50000,
+    #     num_parallel_reads = 1,
+    #     num_parallel_calls = 1,
+    #     normalize=config.train.normalize_action
+    # )
+    # actions = []
+    # dtw_data_loader_iter = iter(dtw_train_loader)
+    # for i in range(50):
+    #     batch = next(dtw_data_loader_iter)
+    #     actions.append(batch['actions'])
+    # actions = torch.cat(actions, dim = 0)        
+    # from aeon.distances import dtw_pairwise_distance
+    # dtw_dist = dtw_pairwise_distance(actions.swapaxes(1,2).numpy())
+    # torch.save(dtw_dist, '/scratch/dcs3zc/droid_101/joint_distance_l2_32.pth', pickle_protocol=4)
         
-    pytorch_init_dataset = TorchRLDSDataset(init_trainset)
-    init_train_loader = DataLoader(
-        pytorch_init_dataset,
+    init_train_loader = DroidRldsDataset(
+        config.train.data_path,
+        config.train.dataset_names[0],
+        action_chunk_size=config.algo.horizon.prediction_horizon,
         batch_size=1,
-        num_workers=0,  # important to keep this to 0 so PyTorch does not mess with the parallelism
+        action_space=config.train.action_space,
+        shuffle=False,
+        shuffle_buffer_size = 1,
+        num_parallel_reads = 1,
+        num_parallel_calls = 1,
+        normalize=config.train.normalize_action
     )
+        
     init_data_loader_iter = iter(init_train_loader)
-    batch = next(init_data_loader_iter) 
+    batch = next(init_data_loader_iter)
+    # import matplotlib.pyplot as plt
+    # plt.imsave('1.png', batch['obs']['table_cam'][0,0].numpy())
+    if config.train.normalize_action:
+        from robomimic.utils.rlds_utils import get_robomimic_action_stats, get_robomimic_obs_stats
+        obs_normalization_stats = get_robomimic_obs_stats(init_train_loader.normalization_stats, batch["obs"].keys())
+        action_normalization_stats = get_robomimic_action_stats(init_train_loader.normalization_stats)
+        print(obs_normalization_stats, action_normalization_stats)
+    
     shape_meta = FileUtils.get_shape_metadata_from_dataset(
         dataset_config=None,
         batch=batch,
@@ -176,21 +130,18 @@ def train(config, device, resume=False):
     )
     print("shape_meta", shape_meta)
 
-    trainset = make_interleaved_dataset(**dataset_kwargs)        
-    trainset = trainset.map(roboarena_transform, num_parallel_calls=config.train.traj_transform_threads)
-    action_normalization_stats = None
-    
-    if config.train.normalize_action:
-        action_stats = ActionUtils.get_action_stats_dict(combined_dataset_statistics["action"], config.train.action_keys, config.train.action_shapes)
-        action_normalization_stats = action_stats_to_normalization_stats(action_stats, config.train.action_config)
-        print(action_normalization_stats)     
-        
-    pytorch_dataset = TorchRLDSDataset(trainset)
-    train_loader = DataLoader(
-        pytorch_dataset,
-        batch_size=config.train.batch_size,
-        num_workers=0,  # important to keep this to 0 so PyTorch does not mess with the parallelism
-    )
+    train_loader = DroidRldsDataset(
+            config.train.data_path,
+            config.train.dataset_names[0],
+            action_chunk_size=config.algo.horizon.prediction_horizon,
+            batch_size=config.train.batch_size,
+            action_space=config.train.action_space,
+            shuffle=True,
+            shuffle_buffer_size = config.train.shuffle_buffer_size,
+            num_parallel_reads = -1,
+            num_parallel_calls = -1,
+    )   
+
     # add info to optim_params
     with config.values_unlocked():
         # number of learning steps per epoch (defaults to a full dataset pass)
@@ -200,13 +151,9 @@ def train(config, device, resume=False):
             # add info to optim_params of each net
             for k in config.algo.optim_params:
                 config.algo.optim_params[k]["num_train_batches"] = train_num_steps
-                config.algo.optim_params[k]["num_epochs"] = config.train.num_epochs                    
+                config.algo.optim_params[k]["num_epochs"] = config.train.num_epochs
 
     assert config.experiment.epoch_every_n_steps is not None and config.train.num_epochs is not None, "epoch_every_n_steps and num_epochs must be set for training with RLDS dataset"
-
-    print("\n============= Training Dataset =============")
-    print(trainset)
-    print("")
 
     # number of learning steps per epoch (defaults to a full dataset pass)
     train_num_steps = config.experiment.epoch_every_n_steps
@@ -216,7 +163,7 @@ def train(config, device, resume=False):
         if "optim_params" in config.algo:
             # add info to optim_params of each net
             for k in config.algo.optim_params:
-                config.algo.optim_params[k]["num_train_batches"] = len(trainset) if train_num_steps is None else train_num_steps
+                config.algo.optim_params[k]["num_train_batches"] = len(train_loader) if train_num_steps is None else train_num_steps
                 config.algo.optim_params[k]["num_epochs"] = config.train.num_epochs
 
     # setup for a new training run
@@ -260,16 +207,16 @@ def train(config, device, resume=False):
     # save the config as a json file
     with open(os.path.join(log_dir, '..', 'config.json'), 'w') as outfile:
         json.dump(config, outfile, indent=4)
-    print("\n============= Model Summary =============")
-    print(model)  # print model summary
-    print("")
+    # print("\n============= Model Summary =============")
+    # print(model)  # print model summary
+    # print("")
 
-    # print all warnings before training begins
-    print("*" * 50)
-    print("Warnings generated by robomimic have been duplicated here (from above) for convenience. Please check them carefully.")
-    flush_warnings()
-    print("*" * 50)
-    print("")
+    # # print all warnings before training begins
+    # print("*" * 50)
+    # print("Warnings generated by robomimic have been duplicated here (from above) for convenience. Please check them carefully.")
+    # flush_warnings()
+    # print("*" * 50)
+    # print("")
     last_ckpt_time = time.time()
 
     start_epoch = 1 # epoch numbers start at 1

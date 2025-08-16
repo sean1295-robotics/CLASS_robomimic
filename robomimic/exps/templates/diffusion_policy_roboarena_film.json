@@ -1,12 +1,12 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_roboarena_film_class_sample",
+        "name": "dp_imn_roboarena_film_sample_largeBS",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
             "log_tb": false,
-            "log_wandb": false,
+            "log_wandb": true,
             "wandb_proj_name": "diffusion_policy"
         },
         "save": {
@@ -51,9 +51,10 @@
     "train": {
         "data_format": "droid_rlds",
         "data_path": "/scratch/dcs3zc",
-        "dataset_names": ["droid_100"],
+        "dataset_names": ["droid_101"],
         "normalize_action" : true,
-        "shuffle_buffer_size": 1000,
+        "action_space": "abs_joint_pos",
+        "shuffle_buffer_size": 500000,
         "sample_weights": [1],
         "subsample_length": 100,
         "num_parallel_calls": 200,
@@ -95,7 +96,7 @@
         },
         "goal_mode": null,
         "cuda": true,
-        "batch_size": 100,
+        "batch_size": 1250,
         "num_epochs": 5000,
         "seed": 1,
         "max_grad_norm": null,
@@ -161,15 +162,15 @@
         },
         "class_weight": 0.0
     },
-    "observation": { 
+    "observation": {
         "modalities": {
             "obs": {
                 "low_dim": [
-                    "arm_joint_pos",
-                    "gripper_pos",
+                    "joint_position",
+                    "gripper_position",
                     "lang_emb"
                 ],
-                "rgb": ["external_cam", "wrist_cam"],
+                "rgb": ["table_cam", "wrist_cam"],
                 "depth": [],
                 "scan": []
             },
@@ -207,7 +208,7 @@
                 },
                 "obs_randomizer_class": "SquareCropNormalizer",
                 "obs_randomizer_kwargs": {
-                    "input_shape": [3, 224, 224]
+                    "output_size": 224
                 }
             },
             "depth": {

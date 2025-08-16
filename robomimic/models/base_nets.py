@@ -689,13 +689,8 @@ class ResNet18ConvFiLM(ConvBase):
         self._input_channel = input_channel
         self.nets = torch.nn.Sequential(*(list(net.children())[:-2]))
         
-        # Create FiLM layers for each residual layer group
-        # ResNet18 channel progression: layer1=64, layer2=128, layer3=256, layer4=512
-        conv_block_channels = [64, 128, 256, 512]
-        self.film_layer1 = FiLMLayer(lang_emb_dim, conv_block_channels[0])
-        self.film_layer2 = FiLMLayer(lang_emb_dim, conv_block_channels[1]) 
-        self.film_layer3 = FiLMLayer(lang_emb_dim, conv_block_channels[2])
-        self.film_layer4 = FiLMLayer(lang_emb_dim, conv_block_channels[3])
+        # Single FiLM layer to condition the final 512-dimensional features
+        self.film_layer = FiLMLayer(lang_emb_dim, 512)
         
         self._output_channels = 512  # Final ResNet18 channel count
 
@@ -716,29 +711,30 @@ class ResNet18ConvFiLM(ConvBase):
         out_w = int(math.ceil(input_shape[2] / 32.))
         return [self._output_channels, out_h, out_w]
 
+    def _add_coord_channels(self, x):
+        """Add coordinate channels for coordinate convolution."""
+        B, C, H, W = x.shape
+        
+        # Create coordinate grids
+        y_coords = torch.arange(H, dtype=x.dtype, device=x.device).view(1, 1, H, 1).expand(B, 1, H, W)
+        x_coords = torch.arange(W, dtype=x.dtype, device=x.device).view(1, 1, 1, W).expand(B, 1, H, W)
+        
+        # Normalize coordinates to [-1, 1]
+        y_coords = (y_coords / (H - 1)) * 2 - 1
+        x_coords = (x_coords / (W - 1)) * 2 - 1
+        
+        return torch.cat([x, y_coords, x_coords], dim=1)
+
     def forward(self, inputs, lang_emb):
-        # Pass through the ResNet backbone layer by layer with FiLM conditioning
-        x = inputs
+        # Add coordinate channels if needed
+        if self._input_coord_conv:
+            inputs = self._add_coord_channels(inputs)
         
-        # Base layers: conv1, bn1, relu, maxpool
-        for i in range(4):
-            x = self.nets[i](x)
+        # Pass through the entire ResNet backbone
+        x = self.nets(inputs)  # Output: (B, 512, 7, 7) for 224x224 input
         
-        # Layer 1 + FiLM
-        x = self.nets[4](x)  # layer1
-        x = self.film_layer1(x, lang_emb)
-        
-        # Layer 2 + FiLM
-        x = self.nets[5](x)  # layer2
-        x = self.film_layer2(x, lang_emb)
-        
-        # Layer 3 + FiLM
-        x = self.nets[6](x)  # layer3
-        x = self.film_layer3(x, lang_emb)
-        
-        # Layer 4 + FiLM
-        x = self.nets[7](x)  # layer4
-        x = self.film_layer4(x, lang_emb)
+        # Apply single FiLM conditioning to the final features
+        x = self.film_layer(x, lang_emb)
         
         return x
 
@@ -747,6 +743,99 @@ class ResNet18ConvFiLM(ConvBase):
         header = '{}'.format(str(self.__class__.__name__))
         return header + '(input_channel={}, input_coord_conv={})'.format(
             self._input_channel, self._input_coord_conv
+        )
+        
+class DinoV3ConvFiLM(ConvBase):
+    """
+    Base class for ConvNets using DinoV3 with FiLM conditioning
+    """
+    def __init__(
+        self,
+        input_channel=3,
+        dinov3_model_name='dinov3_convnext_tiny',
+        freeze=True,
+        lang_emb_dim=768,
+        repo_dir="/sfs/gpfs/tardis/home/dcs3zc/dinov3/",
+    ):
+        """
+        Using DinoV3 pretrained observation encoder network with FiLM conditioning
+        Args:
+            input_channel (int): number of input channels for input images to the network.
+                Must be 3 for DinoV3.
+            dinov3_model_name (str): name of the dinov3 model to load
+            freeze (bool): if True, use a frozen DinoV3 pretrained model.
+            lang_emb_dim (int): dimension of language embeddings for FiLM conditioning
+            repo_dir (str): path to the local dinov3 repository
+        """
+        super(DinoV3ConvFiLM, self).__init__()
+
+        assert input_channel == 3, "DinoV3 only supports input images with 3 channels"
+
+        # Load DinoV3 model
+        weights_path = f"{repo_dir}{dinov3_model_name}_pretrain_lvd1689m-21b726bb.pth"
+        net = torch.hub.load(repo_dir, dinov3_model_name, source='local', weights=weights_path)
+
+        self._input_channel = input_channel
+        self._dinov3_model_name = dinov3_model_name
+        self._freeze = freeze
+        self._input_coord_conv = False
+        self._pretrained = True
+        self._lang_emb_dim = lang_emb_dim
+
+        # Store the DinoV3 backbone without preprocessing
+        self.dinov3_backbone = net
+        
+        # Get output dimension (768 for convnext_tiny)
+        self._output_dim = 768  # This is the output dimension for dinov3_convnext_tiny
+        
+        # Single FiLM layer to condition the output features
+        self.film_layer = FiLMLayer(lang_emb_dim, self._output_dim)
+
+        # Handle freezing
+        if freeze:
+            for param in self.dinov3_backbone.parameters():
+                param.requires_grad = False
+            self.dinov3_backbone.eval()
+
+    def output_shape(self, input_shape):
+        """
+        Function to compute output shape from inputs to this module.
+        Args:
+            input_shape (iterable of int): shape of input. Does not include batch dimension.
+                Some modules may not need this argument, if their output does not depend
+                on the size of the input, or if they assume fixed size input.
+        Returns:
+            out_shape ([int]): list of integers corresponding to output shape
+        """
+        assert(len(input_shape) == 3)
+        # Return [channels, 1, 1] to match R3M pattern for compatibility with conv architectures
+        return [self._output_dim, 1, 1]
+
+    def forward(self, inputs, lang_emb):
+        """
+        Forward pass through DinoV3 backbone followed by FiLM conditioning
+        Args:
+            inputs: input images of shape (B, C, H, W) - should be preprocessed already
+            lang_emb: language embeddings of shape (B, lang_emb_dim)
+        Returns:
+            conditioned features of shape (B, 768, 1, 1)
+        """
+        # Pass through DinoV3 backbone (expects preprocessed inputs)
+        x = self.dinov3_backbone(inputs)  # Output: (B, 768)
+        
+        # Reshape to (B, 768, 1, 1) to match conv format like R3M
+        x = x.unsqueeze(-1).unsqueeze(-1)  # (B, 768) -> (B, 768, 1, 1)
+        
+        # Apply FiLM conditioning
+        x = self.film_layer(x, lang_emb)
+        
+        return x
+
+    def __repr__(self):
+        """Pretty print network."""
+        header = '{}'.format(str(self.__class__.__name__))
+        return header + '(input_channel={}, model={}, freeze={}, lang_emb_dim={})'.format(
+            self._input_channel, self._dinov3_model_name, self._freeze, self._lang_emb_dim
         )
         
 class R3MConv(ConvBase):

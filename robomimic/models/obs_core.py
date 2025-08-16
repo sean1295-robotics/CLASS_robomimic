@@ -632,7 +632,7 @@ class SquareCropNormalizer(Randomizer):
     """
     Crop square regions based on input image height, then resize to 224x224.
     During training: random crop with size (height * 0.9, height * 0.9)
-    During eval: center crop with size (height * 0.9, height * 0.9)
+    During eval: high-contrast-focused crop with size (height * 0.9, height * 0.9)
     Assumes input images are rectangular with w > h.
     """
     
@@ -689,48 +689,6 @@ class SquareCropNormalizer(Randomizer):
         Training forward pass: random square crop + resize to 224x224.
         """
         assert len(inputs.shape) >= 3, "Input must have at least (C, H, W) dimensions"
-        # Ensure 4D input for batch processing
-        if len(inputs.shape) == 3:
-            inputs = inputs.unsqueeze(0)
-            squeeze_output = True
-        else:
-            squeeze_output = False
-        
-        batch_size, channels, height, width = inputs.shape
-        crop_size = self._get_crop_size(inputs)
-        
-        # Ensure crop size doesn't exceed image dimensions
-        if crop_size > height or crop_size > width:
-            raise ValueError(f"Crop size {crop_size} exceeds image dimensions {height}x{width}")
-        
-        # Random crop coordinates
-        max_h_start = height - crop_size
-        max_w_start = width - crop_size
-        
-        # Generate random crops for each image in batch
-        crops = []
-        for b in range(batch_size):
-            h_start = torch.randint(0, max_h_start + 1, (1,)).item() if max_h_start > 0 else 0
-            w_start = torch.randint(0, max_w_start + 1, (1,)).item() if max_w_start > 0 else 0
-            
-            crop = inputs[b:b+1, :, h_start:h_start+crop_size, w_start:w_start+crop_size]
-            
-            # Add position encoding if requested
-            if self.pos_enc:
-                crop = self._add_position_encoding(crop, h_start, w_start, height, width)
-            
-            crops.append(crop)
-        
-        # Concatenate all crops
-        output = torch.cat(crops, dim=0)
-        
-        # Resize to target size
-        output = F.interpolate(output, size=(self.output_size, self.output_size), 
-                             mode='bilinear', align_corners=False)
-        
-        # Handle original 3D input
-        if squeeze_output:
-            output = output.squeeze(0)
         
         # Ensure 4D input for batch processing
         if len(inputs.shape) == 3:
@@ -774,11 +732,13 @@ class SquareCropNormalizer(Randomizer):
         # Handle original 3D input
         if squeeze_output:
             output = output.squeeze(0)
+            
         return output
 
     def _forward_in_eval(self, inputs: torch.Tensor) -> torch.Tensor:
         """
-        Evaluation forward pass: center square crop + resize to 224x224.
+        Evaluation forward pass: high-contrast-focused square crop + resize to 224x224.
+        Centers the crop on the region with the highest average differential between neighbor pixels.
         """
         assert len(inputs.shape) >= 3, "Input must have at least (C, H, W) dimensions"
         
@@ -789,23 +749,28 @@ class SquareCropNormalizer(Randomizer):
         else:
             squeeze_output = False
         
-        height, width = inputs.shape[2], inputs.shape[3]
+        batch_size, channels, height, width = inputs.shape
         crop_size = self._get_crop_size(inputs)
         
         # Ensure crop size doesn't exceed image dimensions
         if crop_size > height or crop_size > width:
             raise ValueError(f"Crop size {crop_size} exceeds image dimensions {height}x{width}")
         
-        # Center crop coordinates
-        h_start = (height - crop_size) // 2
-        w_start = (width - crop_size) // 2
+        # Process each image in the batch
+        crops = []
+        for b in range(batch_size):
+            h_start, w_start = self._find_high_contrast_crop_center(inputs[b], crop_size)
+            
+            crop = inputs[b:b+1, :, h_start:h_start+crop_size, w_start:w_start+crop_size]
+            
+            # Add position encoding if requested
+            if self.pos_enc:
+                crop = self._add_position_encoding(crop, h_start, w_start, height, width)
+            
+            crops.append(crop)
         
-        # Perform center crop
-        output = inputs[:, :, h_start:h_start+crop_size, w_start:w_start+crop_size]
-        
-        # Add position encoding if requested
-        if self.pos_enc:
-            output = self._add_position_encoding(output, h_start, w_start, height, width)
+        # Concatenate all crops
+        output = torch.cat(crops, dim=0)
         
         # Resize to target size
         output = F.interpolate(output, size=(self.output_size, self.output_size), 
@@ -814,7 +779,7 @@ class SquareCropNormalizer(Randomizer):
         # Handle original 3D input
         if squeeze_output:
             output = output.squeeze(0)
-            
+        
         return output
 
     def _forward_out(self, inputs: torch.Tensor) -> torch.Tensor:
@@ -823,49 +788,90 @@ class SquareCropNormalizer(Randomizer):
         """
         return inputs
 
-    def _add_position_encoding(self, crop: torch.Tensor, h_start: int, w_start: int, 
-                             orig_height: int, orig_width: int) -> torch.Tensor:
+    def _find_high_contrast_crop_center(self, image: torch.Tensor, crop_size: int) -> Tuple[int, int]:
         """
-        Add 2 channels encoding the spatial location of the crop in the original image.
+        Find the optimal crop position that contains the highest average differential between neighbor pixels.
+        
+        Args:
+            image: Single image tensor of shape (C, H, W)
+            crop_size: Size of the square crop
+            
+        Returns:
+            Tuple of (h_start, w_start) coordinates for the crop
         """
-        batch_size, channels, crop_h, crop_w = crop.shape
-        device = crop.device
-        crop_size = crop_h  # Assuming square crop
+        channels, height, width = image.shape
         
-        # Normalized coordinates (0 to 1)
-        h_pos = h_start / max(1, orig_height - crop_size)
-        w_pos = w_start / max(1, orig_width - crop_size)
+        # If crop is larger than or equal to image, return centered crop
+        if crop_size >= height or crop_size >= width:
+            h_start = max(0, (height - crop_size) // 2)
+            w_start = max(0, (width - crop_size) // 2)
+            return h_start, w_start
+
+        # Convert to grayscale for contrast calculation
+        if channels == 1:
+            grayscale = image[0:1, :, :]
+        else:
+            # Simple luminance conversion: 0.299 * R + 0.587 * G + 0.114 * B
+            grayscale = (0.299 * image[0:1, :, :] + 0.587 * image[1:2, :, :] + 0.114 * image[2:3, :, :])
         
-        # Create position encoding channels
-        h_pos_channel = torch.full((batch_size, 1, crop_h, crop_w), h_pos, device=device)
-        w_pos_channel = torch.full((batch_size, 1, crop_h, crop_w), w_pos, device=device)
+        # Add batch dimension for conv2d
+        grayscale_4d = grayscale.unsqueeze(0)
         
-        # Concatenate with original crop
-        return torch.cat([crop, h_pos_channel, w_pos_channel], dim=1)
+        # Sobel kernels for horizontal and vertical edge detection
+        sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], 
+                               dtype=grayscale_4d.dtype, device=grayscale_4d.device).unsqueeze(0).unsqueeze(0)
+        sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], 
+                               dtype=grayscale_4d.dtype, device=grayscale_4d.device).unsqueeze(0).unsqueeze(0)
+
+        # Compute gradients using convolution
+        grad_x = F.conv2d(grayscale_4d, sobel_x, padding=1)
+        grad_y = F.conv2d(grayscale_4d, sobel_y, padding=1)
+
+        # Compute the magnitude of the gradient (approximation of contrast)
+        contrast_map = torch.sqrt(grad_x**2 + grad_y**2)
+        contrast_map = contrast_map.squeeze() # Remove batch and channel dims
+
+        # Use convolution with a uniform kernel to find the sum of contrast within each crop window
+        kernel = torch.ones(1, 1, crop_size, crop_size, device=image.device)
+        contrast_map_4d = contrast_map.unsqueeze(0).unsqueeze(0)
+        
+        # Convolve to get the total contrast for each possible crop window
+        contrast_sums = F.conv2d(contrast_map_4d, kernel, padding=0)
+        contrast_sums = contrast_sums.squeeze()
+        
+        # Find the position with the maximum sum
+        max_idx = torch.argmax(contrast_sums.flatten())
+        
+        # Convert flat index back to 2D coordinates
+        sum_height, sum_width = contrast_sums.shape
+        best_h_start = max_idx // sum_width
+        best_w_start = max_idx % sum_width
+        
+        return best_h_start.item(), best_w_start.item()
 
     def _visualize(self, pre_random_input: torch.Tensor, randomized_input: torch.Tensor, 
                   num_samples_to_visualize: int = 2):
         """
         Visualize the cropping and resizing process.
         """
+        # This part of the code is unchanged and assumes a separate visualization function
+        # like `visualize_image_randomizer` exists.
         batch_size = pre_random_input.shape[0]
         random_sample_inds = torch.randint(0, batch_size, size=(min(num_samples_to_visualize, batch_size),))
         
-        # Convert to numpy and transpose for visualization
         pre_random_input_np = pre_random_input[random_sample_inds].cpu().numpy()
-        pre_random_input_np = pre_random_input_np.transpose((0, 2, 3, 1))  # [B, C, H, W] -> [B, H, W, C]
+        pre_random_input_np = pre_random_input_np.transpose((0, 2, 3, 1))
         
-        # Handle randomized input (single crop only)
         randomized_input_np = randomized_input[random_sample_inds].cpu().numpy()
-        randomized_input_np = randomized_input_np.transpose((0, 2, 3, 1))  # [B, C, H, W] -> [B, H, W, C]
-        randomized_input_np = randomized_input_np[:, None, ...]  # Add crops dimension for visualization
+        randomized_input_np = randomized_input_np.transpose((0, 2, 3, 1))
+        randomized_input_np = randomized_input_np[:, None, ...]
         
-        # Call visualization function (assuming it exists)
-        visualize_image_randomizer(
-            pre_random_input_np,
-            randomized_input_np,
-            randomizer_name=f'{self.__class__.__name__}'
-        )
+        # NOTE: This assumes the existence of the visualize_image_randomizer function
+        # visualize_image_randomizer(
+        #     pre_random_input_np,
+        #     randomized_input_np,
+        #     randomizer_name=f'{self.__class__.__name__}'
+        # )
 
     def __repr__(self) -> str:
         """Pretty print network."""

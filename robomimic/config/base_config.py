@@ -248,6 +248,7 @@ class BaseConfig(Config):
         # RLDS only
         self.train.data_path = ""
         self.train.shuffle_buffer_size = 100000
+        self.train.action_space = ""
         self.train.sample_weights = [1]
         self.train.dataset_names = [""]
         self.train.subsample_length = 100
