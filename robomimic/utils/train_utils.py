@@ -838,7 +838,6 @@ def save_model(model, config, env_meta, shape_meta, ckpt_path, variable_state=No
         variable_state=variable_state,
     )
     if obs_normalization_stats is not None:
-        assert config.train.hdf5_normalize_obs
         obs_normalization_stats = deepcopy(obs_normalization_stats)
         params["obs_normalization_stats"] = TensorUtils.to_list(obs_normalization_stats)
     if action_normalization_stats is not None:

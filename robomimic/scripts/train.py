@@ -94,10 +94,11 @@ def train(config, device, resume=False):
     #     batch = next(dtw_data_loader_iter)
     #     actions.append(batch['actions'])
     # actions = torch.cat(actions, dim = 0)        
-    # from aeon.distances import dtw_pairwise_distance
-    # dtw_dist = dtw_pairwise_distance(actions.swapaxes(1,2).numpy())
+    # from aeon.distances import euclidean_pairwise_distance
+    # dtw_dist = euclidean_pairwise_distance(actions.swapaxes(1,2).numpy())
     # torch.save(dtw_dist, '/scratch/dcs3zc/droid_101/joint_distance_l2_32.pth', pickle_protocol=4)
-        
+    # print(dtw_dist.shape)
+    # breakpoint()
     init_train_loader = DroidRldsDataset(
         config.train.data_path,
         config.train.dataset_names[0],

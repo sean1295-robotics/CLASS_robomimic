@@ -260,7 +260,6 @@ class DroidRldsDataset:
         shuffle: bool = True,
         action_chunk_size: int = 16,
         action_space: bool = True,
-        max_loaded_steps_per_episode: int = 100,
         shuffle_buffer_size: int = 250_000,
         num_parallel_reads: int = -1,
         num_parallel_calls: int = -1,
@@ -282,11 +281,7 @@ class DroidRldsDataset:
         def restructure(traj):
             actions = tf.concat(
                 (
-                    (
-                        traj["action_dict"]["joint_position"]
-                        if action_space
-                        else traj["action_dict"]["joint_velocity"]
-                    ),
+                    traj["action_dict"]["joint_position"],
                     traj["action_dict"]["gripper_position"],
                 ),
                 axis=-1,

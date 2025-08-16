@@ -268,8 +268,8 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 pairwise_distance = pairwise_distance.masked_fill(self_mask, float('inf')).to(self.device)
 
                 cdf_vals = self.dist_normalizer.distance_to_cdf(pairwise_distance)
-                dist_matrix = 1-cdf_vals
-                pos_mask = dist_matrix > 0            
+                soft_weights = 1-cdf_vals
+                pos_mask = soft_weights > 0
                 
                 obs_cond_normalized = F.normalize(obs_cond, dim=1) 
                 temperature = 0.07
@@ -286,7 +286,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 log_denom = torch.logsumexp(scaled_sim_stable.masked_fill(self_mask, float('-inf')), dim=1, keepdim=True)
                 log_prob = scaled_sim_stable - log_denom
                 
-                pos_weights = dist_matrix.to(self.device) * pos_mask
+                pos_weights = soft_weights.to(self.device) * pos_mask
                 pos_denom = pos_weights.sum(dim=1)
                 valid_samples_mask = pos_denom > 1e-6
                 
@@ -309,7 +309,6 @@ class DiffusionPolicyUNet(PolicyAlgo):
                         
             # add noise to the clean actions according to the noise magnitude at each diffusion iteration
             # (this is the forward diffusion process)
-            actions = actions.clip(-1, 1)
             noisy_actions = self.noise_scheduler.add_noise(
                 actions, noise, timesteps)
             
@@ -352,7 +351,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 
                 step_info = {
                     "policy_grad_norms": policy_grad_norms,
-                    "Valid_data_percentage": float(B / batch['actions'].shape[0])
+                    "average_soft_weight": soft_weights.mean().cpu() if self.algo_config.class_weight else 0.0
                 }
                 info.update(step_info)
 
@@ -374,7 +373,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
         log["BC_Loss"] = info["losses"]["bc_loss"].item()
         log["CLASS_Loss"] = info["losses"]["class_loss"].item()            
         log["Policy_Grad_Norms"] = info["policy_grad_norms"]
-        log["Valid_data_percentage"] = info["Valid_data_percentage"]
+        log["average_soft_weight"] = info["average_soft_weight"]
         return log
     
     def reset(self):

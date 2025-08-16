@@ -1,7 +1,7 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_roboarena_film_sample_largeBS",
+        "name": "dp_imn_roboarena_film_sample_smallBS_class",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -96,7 +96,7 @@
         },
         "goal_mode": null,
         "cuda": true,
-        "batch_size": 1250,
+        "batch_size": 250,
         "num_epochs": 5000,
         "seed": 1,
         "max_grad_norm": null,
@@ -147,7 +147,7 @@
             "num_train_timesteps": 16,
             "num_inference_timesteps": 16,
             "beta_schedule": "squaredcos_cap_v2",
-            "clip_sample": true,
+            "clip_sample": false,
             "prediction_type": "sample"
         },
         "ddim": {
@@ -155,12 +155,12 @@
             "num_train_timesteps": 16,
             "num_inference_timesteps": 16,
             "beta_schedule": "squaredcos_cap_v2",
-            "clip_sample": true,
+            "clip_sample": false,
             "set_alpha_to_one": true,
             "steps_offset": 0,
             "prediction_type": "epsilon"
         },
-        "class_weight": 0.0
+        "class_weight": 1.0
     },
     "observation": {
         "modalities": {
