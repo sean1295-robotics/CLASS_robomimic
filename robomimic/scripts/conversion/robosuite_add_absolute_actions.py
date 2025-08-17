@@ -55,7 +55,7 @@ class RobomimicAbsoluteActionConverter:
         if robosuite.__version__ < "1.5":
             abs_env_meta['env_kwargs']['controller_configs']['control_delta'] = False
         else:
-            abs_env_meta['env_kwargs']['controller_configs']['body_parts']['right']['input_type'] == "absolute"
+            abs_env_meta['env_kwargs']['controller_configs']['body_parts']['right']['control_delta'] = False
 
         env = EnvUtils.create_env_from_metadata(
             env_meta=env_meta,
@@ -75,7 +75,7 @@ class RobomimicAbsoluteActionConverter:
             assert not abs_env.env.robots[0].controller.use_delta
             self.controller_config = abs_env._init_kwargs['controller_configs']
         else:
-            assert not abs_env._init_kwargs['controller_configs']['body_parts']['right']['input_type'] == "absolute"
+            assert not abs_env._init_kwargs['controller_configs']['body_parts']['right']['control_delta']
             self.controller_config = abs_env._init_kwargs['controller_configs']['body_parts']['right']
 
         self.env = env

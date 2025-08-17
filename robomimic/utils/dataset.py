@@ -697,7 +697,7 @@ class CLASS_SequenceDataset(SequenceDataset):
             for i in range(len(self)):
                 nacs.append(super().__getitem__(i)["actions"])
             nacs = np.stack(nacs, axis=0).transpose(0, 2, 1) # (B, T, D) -> (B, D, T)
-            print(nacs.shape, "Computing pairwise DTW distances... This takes a while for large datasets and requires large memory.")
+            print(nacs.shape, "Computing pairwise DTW distances (One-time Operation). This takes a while and requires large memory for big datasets.")
             dists = TensorUtils.to_tensor(dtw_pairwise_distance(nacs))
             print("Pairwise DTW distances computed.")
             self.dist = self.get_cdf_dist(dists, dist_quantile)
