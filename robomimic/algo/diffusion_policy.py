@@ -60,6 +60,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
         
         obs_encoder = ObsNets.ObservationGroupEncoder(
             observation_group_shapes=observation_group_shapes,
+            feature_activation=None,
             encoder_kwargs=encoder_kwargs,
         )
         # IMPORTANT!

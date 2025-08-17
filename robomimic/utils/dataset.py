@@ -707,46 +707,31 @@ class CLASS_SequenceDataset(SequenceDataset):
             print("Saving distance matrix to: ", dist_path)
             torch.save(self.dist, dist_path)
             
-    # def generate_dist(self):
-    #     hdf5_dir = os.path.dirname(self.hdf5_path)
-    #     filename = "dist_online.pth" if self.compute_dist_online else "dist_offline.pth"
-    #     dist_path = os.path.join(hdf5_dir, filename) 
-    #     if os.path.exists(dist_path):
-    #         print("Loading distance matrix from: ", dist_path)
-    #         dists = torch.load(dist_path)
-    #         if self.compute_dist_online:
-    #             self.dist_normalizer = PairwiseDistanceCDFNormalizer(
-    #                 dists, 
-    #                 quantile=self.dist_quantile, 
-    #                 n_quantiles=1000
-    #                 )
-    #         else:
-    #             self.normalized_dist = self.get_cdf_dist(dists, self.dist_quantile)
-    #     else:
-    #         from aeon.distances import dtw_pairwise_distance, distance
-    #         from tqdm import tqdm
-    #         nacs = []
-    #         for i in range(len(self)):
-    #             nacs.append(super().__getitem__(i)["actions"])
-    #         nacs = np.stack(nacs, axis=0).transpose(0, 2, 1) # (B, T, D) -> (B, D, T)
-    #         print("Computing pairwise DTW distances... This takes a while for large datasets and requires large memory.")
-    #         nacs[..., 3:9] = nacs[..., 3:9] / 2 # rescale orientation by 2
-    #         if self.compute_dist_online:
-    #             dists = []
-    #             method = 'dtw'
-    #             for _ in tqdm(range(100000)):
-    #                 row, col = np.random.randint(0, nacs.shape[0], size=2)
-    #                 dists.append(distance(nacs[row], nacs[col], metric=method))                        
-    #             dists = torch.tensor(dists, dtype=torch.float32)
-    #             filename = "dist_online.pth"
-    #         else:
-    #             dists = TensorUtils.to_tensor(dtw_pairwise_distance(nacs))
-    #             filename = "dist_offline.pth"
-    #         print("Pairwise DTW distances computed.")
-    #         hdf5_dir = os.path.dirname(self.hdf5_path)
-    #         dist_path = os.path.join(hdf5_dir, filename)
-    #         print("Saving distance matrix to: ", dist_path)
-    #         torch.save(dists, dist_path)
+    @staticmethod
+    def get_cdf_dist(dist, quantile = 0.02):
+        triu_mask = torch.triu(torch.ones_like(dist, dtype=torch.bool), diagonal=1)
+        flat = dist[triu_mask]
+        
+        k = int(flat.numel() * quantile)
+        topk_values, topk_indices = torch.topk(flat, k, largest=False, sorted=True)
+        print('Threshold: ', topk_values.max())
+    
+        inv_cdf = torch.linspace(1.0, 0.0, steps=k, device=dist.device)
+        dist_vals = torch.zeros_like(flat, dtype = inv_cdf.dtype)
+        dist_vals[topk_indices] = inv_cdf
+    
+        # Build normalized symmetric dist matrix
+        dist = torch.zeros_like(dist, dtype = dist_vals.dtype)
+        dist[triu_mask] = dist_vals
+        dist = dist + dist.T  # Reflect to lower triangle
+        return dist
+    
+    def __getitem__(self, index):
+        output = super().__getitem__(index)
+        output["dist"] = self.dist[index]
+        output["index"] = index
+        output["temperature"] = self.temperature
+        return output
                 
     @staticmethod
     def get_normalized_dist(dist, quantile):
