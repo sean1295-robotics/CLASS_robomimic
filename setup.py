@@ -31,7 +31,7 @@ setup(
         "torchvision",
         "huggingface_hub==0.23.4",
         "transformers==4.41.2",
-        "diffusers==0.34.0",
+        "diffusers==0.32.2",
         "aeon",
     ],
     eager_resources=['*'],
