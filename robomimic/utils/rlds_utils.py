@@ -365,8 +365,8 @@ class DroidRldsDataset:
             augmentation_config = {
                 "augment_order": ["random_resized_crop", "random_brightness", "random_contrast", "random_saturation", "random_hue"],
                 "random_resized_crop": {
-                    "scale": [0.8, 1.0],
-                    "ratio": [0.9, 1.1],
+                    "scale": [0.95, 1.0],
+                    "ratio": [0.8, 1.2],
                 },
                 "random_brightness": [0.3],
                 "random_contrast": [0.6, 1.4],
@@ -553,7 +553,7 @@ class DroidRldsDataset:
         def restructure_for_stats(traj):
             actions = tf.concat(
                 (
-                    traj["action_dict"]["joint_position"] if action_space else traj["action_dict"]["joint_velocity"],
+                    traj["action_dict"]["joint_position"],
                     traj["action_dict"]["gripper_position"],
                 ),
                 axis=-1,
@@ -591,7 +591,7 @@ class DroidRldsDataset:
 
         p1 = np.percentile(actions, 1, axis=0)
         p99 = np.percentile(actions, 99, axis=0)
-
+        
         metadata = {
             "actions": {
                 "mean": actions.mean(0).tolist(),

@@ -58,9 +58,9 @@ class DiffusionPolicyUNet(PolicyAlgo):
         observation_group_shapes = OrderedDict()
         observation_group_shapes["obs"] = OrderedDict(self.obs_shapes)
         encoder_kwargs = ObsUtils.obs_encoder_kwargs_from_config(self.obs_config.encoder)
-        
         obs_encoder = ObsNets.ObservationGroupEncoder(
             observation_group_shapes=observation_group_shapes,
+            feature_activation=None,
             encoder_kwargs=encoder_kwargs,
         )
         # IMPORTANT!
@@ -164,14 +164,6 @@ class DiffusionPolicyUNet(PolicyAlgo):
         input_batch["obs"] = {k: batch["obs"][k][:, :To, :] for k in batch["obs"]}
         input_batch["goal_obs"] = batch.get("goal_obs", None) # goals may not be present
         input_batch["actions"] = batch["actions"][:, :Tp, :]
-        # # check if actions are normalized to [-1,1]
-        # if not self.action_check_done:
-        #     actions = input_batch["actions"]
-        #     in_range = (-1 <= actions) & (actions <= 1)
-        #     all_in_range = torch.all(in_range).item()
-        #     if not all_in_range:
-        #         raise ValueError("'actions' must be in range [-1,1] for Diffusion Policy!.")
-        #     self.action_check_done = True
         
         return TensorUtils.to_device(TensorUtils.to_float(input_batch), self.device)
         
@@ -255,7 +247,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
             assert obs_features.ndim == 3  # [B, T, D]
 
             obs_cond = obs_features.flatten(start_dim=1)
-            
+
             if self.algo_config.class_weight:
                 processed_actions = actions.clone().detach()
                 # processed_actions[..., 3:9] /= 2
