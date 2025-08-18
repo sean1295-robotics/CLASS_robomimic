@@ -88,7 +88,7 @@
         },
         "goal_mode": null,
         "cuda": true,
-        "batch_size": 256,
+        "batch_size": 160,
         "num_epochs": 50,
         "seed": 1,
         "max_grad_norm": null,
