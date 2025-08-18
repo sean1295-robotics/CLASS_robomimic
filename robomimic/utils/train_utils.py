@@ -67,10 +67,10 @@ def get_exp_dir(config, auto_remove_exp_dir=False, resume=False):
         time_str = sorted(subdir_lst)[-1]  # get the most recent subdirectory
         assert os.path.isdir(os.path.join(base_output_dir, time_str)), "Found item {} that is not a subdirectory in {}".format(time_str, base_output_dir)
     elif os.path.exists(base_output_dir):
-        # if not auto_remove_exp_dir:
-        #     ans = input("WARNING: model directory ({}) already exists! \noverwrite? (y/n)\n".format(base_output_dir))
-        # else:
-        ans = "y"
+        if not auto_remove_exp_dir:
+            ans = input("WARNING: model directory ({}) already exists! \noverwrite? (y/n)\n".format(base_output_dir))
+        else:
+            ans = "y"
         if ans == "y":
             print("REMOVING")
             shutil.rmtree(base_output_dir)
@@ -355,7 +355,7 @@ def run_rollout_nonparam(
             retrieved_acs = torch.einsum("i,i...->...", weights.to(acs.device), acs[indices])
             retrieved_acs = TensorUtils.to_numpy(retrieved_acs)
             # play action
-            for retrieved_ac in retrieved_acs:
+            for retrieved_ac in retrieved_acs: # uses the entire action sequence 
                 timestep += 1
                 ob_dict, r, done, _ = env.step(retrieved_ac)
 
@@ -650,8 +650,7 @@ def rollout_with_stats(
                     ac = PyUtils.action_dict_to_vector(ac_dict, action_keys=action_keys)
                 acs.append(TensorUtils.to_tensor(ac))
             retrieval_obs = torch.cat(retrieval_obs, dim=0)
-            acs = torch.cat(acs, dim=0)        
-
+            acs = torch.cat(acs, dim=0)
         
     for env_key, env in envs.items():
         env_video_writer = None
@@ -687,6 +686,9 @@ def rollout_with_stats(
                     retrieval_ob=retrieval_obs,
                     acs=acs,
                     horizon=horizon,
+                    nnn=config.experiment.rollout.nonparam_nnn,
+                    use_cossim=config.experiment.rollout.nonparam_use_cossim,
+                    temperature=config.experiment.rollout.nonparam_temperature,
                     render=render,
                     use_goals=use_goals,
                     video_writer=env_video_writer if include_nonparam_rollout and env_video_writer is not None else None,

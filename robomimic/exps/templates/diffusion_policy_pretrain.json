@@ -32,7 +32,10 @@
             "horizon": 400,
             "rate": 10,
             "warmstart": 0,
-            "terminate_on_success": true
+            "terminate_on_success": true,
+            "nonparam_nnn": 64,
+            "nonparam_use_cossim": true,
+            "nonparam_temperature": 0.01
         },
         "env_meta_update_dict": {
             "env_kwargs": {
