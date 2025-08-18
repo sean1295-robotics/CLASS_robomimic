@@ -34,6 +34,7 @@ setup(
         "transformers==4.41.2",
         "diffusers==0.32.2",
         "aeon",
+        "wandb"
     ],
     eager_resources=['*'],
     include_package_data=True,

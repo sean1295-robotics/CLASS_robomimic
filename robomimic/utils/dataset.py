@@ -354,9 +354,15 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         obs_normalization_stats = { k : {} for k in merged_stats }
         for k in merged_stats:
-            # note we add a small tolerance of 1e-3 for std
-            obs_normalization_stats[k]["offset"] = merged_stats[k]["mean"].astype(np.float32)
-            obs_normalization_stats[k]["scale"] = (np.sqrt(merged_stats[k]["sqdiff"] / merged_stats[k]["n"]) + 1e-3).astype(np.float32)
+            if "image" in k: # 
+                obs_normalization_stats[k]["offset"] = None
+                obs_normalization_stats[k]["scale"] = None
+            else: # only normalize non-image observations
+                # note we add a small tolerance of 1e-3 for std
+                obs_normalization_stats[k]["offset"] = merged_stats[k]["mean"].astype(np.float32)
+                obs_normalization_stats[k]["scale"] = (np.sqrt(merged_stats[k]["sqdiff"] / merged_stats[k]["n"]) + 1e-3).astype(np.float32)
+
+
         return obs_normalization_stats
 
     def get_obs_normalization_stats(self):
@@ -697,7 +703,7 @@ class CLASS_SequenceDataset(SequenceDataset):
             for i in range(len(self)):
                 nacs.append(super().__getitem__(i)["actions"])
             nacs = np.stack(nacs, axis=0).transpose(0, 2, 1) # (B, T, D) -> (B, D, T)
-            print(nacs.shape, "Computing pairwise DTW distances (One-time Operation). This takes a while and requires large memory for big datasets.")
+            print("Computing pairwise DTW distances (One-time Operation). This takes a while and requires large memory for big datasets.")
             dists = TensorUtils.to_tensor(dtw_pairwise_distance(nacs))
             print("Pairwise DTW distances computed.")
             self.dist = self.get_cdf_dist(dists, dist_quantile)

@@ -1,12 +1,12 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_pretrain_1536",
+        "name": "dp_imn_pretrain",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
             "log_tb": false,
-            "log_wandb": true,
+            "log_wandb": false,
             "wandb_proj_name": "diffusion_policy"
         },
         "save": {
@@ -30,7 +30,7 @@
             "enabled": true,
             "n": 50,
             "horizon": 400,
-            "rate": 25,
+            "rate": 10,
             "warmstart": 0,
             "terminate_on_success": true
         },
@@ -39,7 +39,7 @@
                 "controller_configs": {
                     "body_parts": {
                         "right": {
-                            "control_delta": false
+                            "input_type": "absolute"
                         }
                     }                    
                 }
@@ -49,7 +49,7 @@
     },
     "train": {
         "data": null,
-        "output_dir": "/scratch/dcs3zc/robomimic/robomimic_v151",
+        "output_dir": "logs",
         "normalize_weights_by_ds_size": false,
         "num_data_workers": 0,
         "hdf5_cache_mode": "all",
@@ -88,8 +88,8 @@
         },
         "goal_mode": null,
         "cuda": true,
-        "batch_size": 1536,
-        "num_epochs": 5000,
+        "batch_size": 256,
+        "num_epochs": 50,
         "seed": 1,
         "max_grad_norm": null,
         "temperature": 0.05,
@@ -98,9 +98,9 @@
     "algo": {
         "optim_params": {
             "policy": {
-                "optimizer_type": "sgd",
+                "optimizer_type": "lars",
                 "learning_rate": {
-                    "initial": 0.04,
+                    "initial": 0.4,
                     "step_every_batch": true,
                     "scheduler_type": "cosine",
                     "num_cycles": 0.5,
@@ -193,7 +193,7 @@
                                   },
                     "feature_dimension": null
                 },
-                "obs_randomizer_class": "CompoundRandomizer",
+                "obs_randomizer_class": "CropRandomizer",
                 "obs_randomizer_kwargs": {
                     "input_shape": [3, 224, 224],
                     "crop_height": 224,

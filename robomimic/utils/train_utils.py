@@ -661,9 +661,14 @@ def rollout_with_stats(
 
         env_name = env.name
 
-        print("rollout: env={}, horizon={}, use_goals={}, num_episodes={}".format(
-            env_name, horizon, use_goals, num_episodes,
-        ))
+        if include_nonparam_rollout:
+            print("rollout: env={}, horizon={}, Non-parametric, use_goals={}, num_episodes={}".format(
+                env_name, horizon, use_goals, num_episodes,
+            ))
+        else:
+            print("rollout: env={}, horizon={}, Parametric, use_goals={}, num_episodes={}".format(
+                env_name, horizon, use_goals, num_episodes,
+            ))
         rollout_logs = {"Non-Parametric": [], "Parametric": []}
         iterator = range(num_episodes)
         if not verbose:
@@ -716,8 +721,7 @@ def rollout_with_stats(
                 
                 if verbose:
                     print("Episode {}, Parametric, horizon={}, num_success_param={}".format(ep_i + 1, horizon, num_success_param))
-                    print(json.dumps(param_rollout_info, sort_keys=True, indent=4))
-                    
+                    print(json.dumps(param_rollout_info, sort_keys=True, indent=4))                    
 
         if video_dir is not None:
             # close this env's video writer (next env has it's own)
