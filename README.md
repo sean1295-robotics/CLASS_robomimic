@@ -25,7 +25,7 @@ $ bash ./scripts/finetune.sh
 ## Train from Scratch 🤔
 Alternatively, you can also train from scratch for ablation.
 ```
-$ bash ./scripts/finetune.sh
+$ bash ./scripts/train.sh
 ```
 
 <!-- ## Citation
