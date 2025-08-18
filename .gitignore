@@ -2,6 +2,7 @@
 dist/
 
 # local test dataset that is lazily downloaded by example scripts
+datasets/
 tests/assets/test.hdf5
 tests/assets/test_v141.hdf5
 tests/assets/test_v15.hdf5
@@ -121,3 +122,6 @@ venv.bak/
 
 # private macros
 macros_private.py
+
+# misc
+.png

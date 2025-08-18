@@ -157,9 +157,10 @@ class DiffusionPolicyUNet(PolicyAlgo):
         Tp = self.algo_config.horizon.prediction_horizon
 
         input_batch = dict()
-        lang_emb_decoded = [inst.decode() if len(inst) else "Do something useful" for inst in batch["obs"]["lang_emb"]]                
-        batch["obs"]["lang_emb"] = LangUtils.batch_get_lang_emb(lang_emb_decoded)
-        batch["obs"]["lang_emb"] = batch["obs"]["lang_emb"].unsqueeze(1).repeat(1, To, 1)
+        if isinstance(batch["obs"]["lang_emb"], str):
+            lang_emb_decoded = [inst.decode() if len(inst) else "Do something useful" for inst in batch["obs"]["lang_emb"]]                
+            batch["obs"]["lang_emb"] = LangUtils.batch_get_lang_emb(lang_emb_decoded)
+            batch["obs"]["lang_emb"] = batch["obs"]["lang_emb"].unsqueeze(1).repeat(1, To, 1)
             
         input_batch["obs"] = {k: batch["obs"][k][:, :To, :] for k in batch["obs"]}
         input_batch["goal_obs"] = batch.get("goal_obs", None) # goals may not be present

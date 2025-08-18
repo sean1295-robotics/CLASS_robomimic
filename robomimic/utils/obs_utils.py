@@ -478,11 +478,12 @@ def normalize_dict(dict, normalization_stats):
     """
 
     # ensure we have statistics for each modality key in the dict
-    assert set(dict.keys()).issubset(normalization_stats), f"dict keys {list(dict.keys())} \
+    dict_keys = [key for key in dict.keys() if "image" not in key and "lang" not in key]
+    assert set(dict_keys).issubset(normalization_stats), f"dict keys {list(dict_keys)} \
          should be subset of normalization stats keys {list(normalization_stats.keys())}"
-    
+
     for m in dict:
-        if normalization_stats[m] is not None:
+        if "image" not in m and "lang" not in m:
             offset = normalization_stats[m]["offset"][0]
             scale = normalization_stats[m]["scale"][0]
 
@@ -500,7 +501,7 @@ def normalize_dict(dict, normalization_stats):
             offset = offset.reshape(reshape_padding + tuple(offset.shape))
             scale = scale.reshape(reshape_padding + tuple(scale.shape))
 
-            dict[m] = (dict[m] - offset) / scale            
+            dict[m] = (dict[m] - offset) / scale
 
     return dict
 

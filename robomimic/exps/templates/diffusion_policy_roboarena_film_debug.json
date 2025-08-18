@@ -1,7 +1,7 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_roboarena_film_sample_smallBS_class",
+        "name": "dp_imn_roboarena_film_sample_smallBS_debug",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -31,16 +31,21 @@
     "train": {
         "data_format": "droid_rlds",
         "data_path": "/scratch/dcs3zc",
-        "dataset_names": ["droid_101"],
+        "dataset_names": ["droid_100"],
         "normalize_action" : true,
         "action_space": "abs_joint_pos",
-        "shuffle_buffer_size": 500000,
+        "shuffle_buffer_size": 100000,
         "sample_weights": [1],
         "subsample_length": 100,
         "num_parallel_calls": 200,
         "traj_transform_threads": 48,
         "traj_read_threads": 48,   
-        "data": [],
+        "data": [
+            {
+                "path": "/scratch/dcs3zc/robomimic/robomimic_v151/square/ph/image_v15.hdf5",
+                "lang": "Pick up the brown handle and insert it into the brown square rod."
+            }
+        ],
         "output_dir": "/scratch/dcs3zc/robomimic/robomimic_v151",
         "normalize_weights_by_ds_size": false,
         "num_data_workers": 0,
@@ -135,7 +140,7 @@
             "steps_offset": 0,
             "prediction_type": "epsilon"
         },
-        "class_weight": 1.0
+        "class_weight": 0.0
     },
     "observation": {
         "modalities": {

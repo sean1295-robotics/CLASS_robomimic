@@ -115,7 +115,7 @@ class EnvRobosuite(EB.EnvBase):
         self._init_kwargs = deepcopy(kwargs)
         self.env = robosuite.make(self._env_name, **kwargs)
         self.lang = lang
-        self._lang_emb = LangUtils.get_lang_emb(self.lang).cpu()
+        self._lang_emb = LangUtils.get_lang_emb(self.lang).detach().numpy()
 
         if self._is_v1:
             # Make sure joint position observations and eef vel observations are active
@@ -282,7 +282,7 @@ class EnvRobosuite(EB.EnvBase):
             ret["gripper_qpos"] = np.array(di["gripper_qpos"])
 
         if self._lang_emb is not None:
-            ret[LangUtils.LANG_EMB_OBS_KEY] = np.array(self._lang_emb)
+            ret[LangUtils.LANG_EMB_OBS_KEY] = self._lang_emb
         return ret
 
     def get_real_depth_map(self, depth_map):

@@ -129,7 +129,7 @@ def get_env_metadata_from_dataset(dataset_path, ds_format='robomimic', set_env_s
     return env_meta
 
 
-def get_shape_metadata_from_dataset(dataset_config, batch, action_keys, all_obs_keys=None, verbose=False):
+def get_shape_metadata_from_dataset(dataset_config, action_keys, batch=None, all_obs_keys=None, verbose=False):
     """
     Retrieves shape metadata from dataset.
 
@@ -449,8 +449,9 @@ def policy_from_checkpoint(device=None, ckpt_path=None, ckpt_dict=None, verbose=
     obs_normalization_stats = ckpt_dict.get("obs_normalization_stats", None)
     if obs_normalization_stats is not None:
         for m in obs_normalization_stats:
-            for k in obs_normalization_stats[m]:
-                obs_normalization_stats[m][k] = np.array(obs_normalization_stats[m][k])
+            if obs_normalization_stats[m] is not None:
+                for k in obs_normalization_stats[m]:
+                    obs_normalization_stats[m][k] = np.array(obs_normalization_stats[m][k])
 
     # maybe restore action normalization stats
     action_normalization_stats = ckpt_dict.get("action_normalization_stats", None)

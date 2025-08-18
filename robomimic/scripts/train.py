@@ -36,6 +36,7 @@ import tensorflow as tf
 import robomimic.utils.train_utils as TrainUtils
 import robomimic.utils.torch_utils as TorchUtils
 import robomimic.utils.obs_utils as ObsUtils
+import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.file_utils as FileUtils
 from robomimic.config import config_factory
 from robomimic.algo import algo_factory, RolloutPolicy
@@ -70,102 +71,227 @@ def train(config, device, resume=False):
 
     # read config to set up metadata for observation modalities (e.g. detecting rgb observations)
     ObsUtils.initialize_obs_utils_with_config(config)
-    obs_normalization_stats = None        
-
-    # FOR RLDS
-    tf.config.set_visible_devices([], "GPU")
-    obs_normalization_stats, action_normalization_stats = None, None
     
-    # dtw_train_loader = DroidRldsDataset(
-    #     config.train.data_path,
-    #     config.train.dataset_names[0],
-    #     action_chunk_size=config.algo.horizon.prediction_horizon,
-    #     batch_size=500,
-    #     action_space=config.train.action_space,
-    #     shuffle=False,
-    #     shuffle_buffer_size = 50000,
-    #     num_parallel_reads = 1,
-    #     num_parallel_calls = 1,
-    #     normalize=config.train.normalize_action
-    # )
-    # actions = []
-    # dtw_data_loader_iter = iter(dtw_train_loader)
-    # for i in range(50):
-    #     batch = next(dtw_data_loader_iter)
-    #     actions.append(batch['actions'])
-    # actions = torch.cat(actions, dim = 0)        
-    # from aeon.distances import euclidean_pairwise_distance
-    # dtw_dist = euclidean_pairwise_distance(actions.swapaxes(1,2).numpy())
-    # torch.save(dtw_dist, '/scratch/dcs3zc/droid_101/joint_distance_l2_32.pth', pickle_protocol=4)
-    # print(dtw_dist.shape)
-    # breakpoint()
-    init_train_loader = DroidRldsDataset(
-        config.train.data_path,
-        config.train.dataset_names[0],
-        action_chunk_size=config.algo.horizon.prediction_horizon,
-        batch_size=1,
-        action_space=config.train.action_space,
-        shuffle=False,
-        shuffle_buffer_size = 1,
-        num_parallel_reads = 1,
-        num_parallel_calls = 1,
-        normalize=config.train.normalize_action
-    )
+    if "droid" in config.train.data_format:
+        # FOR RLDS
+        tf.config.set_visible_devices([], "GPU")
         
-    init_data_loader_iter = iter(init_train_loader)
-    batch = next(init_data_loader_iter)
-    # import matplotlib.pyplot as plt
-    # plt.imsave('1.png', batch['obs']['table_cam'][0,0].numpy())
-    if config.train.normalize_action:
-        from robomimic.utils.rlds_utils import get_robomimic_action_stats, get_robomimic_obs_stats
-        obs_normalization_stats = get_robomimic_obs_stats(init_train_loader.normalization_stats, batch["obs"].keys())
-        action_normalization_stats = get_robomimic_action_stats(init_train_loader.normalization_stats)
-        print(obs_normalization_stats, action_normalization_stats)
-    
-    shape_meta = FileUtils.get_shape_metadata_from_dataset(
-        dataset_config=None,
-        batch=batch,
-        action_keys=config.train.action_keys,
-        all_obs_keys=config.all_obs_keys,
-        verbose=True,
-    )
-    print("shape_meta", shape_meta)
-
-    train_loader = DroidRldsDataset(
+        # dtw_train_loader = DroidRldsDataset(
+        #     config.train.data_path,
+        #     config.train.dataset_names[0],
+        #     action_chunk_size=config.algo.horizon.prediction_horizon,
+        #     batch_size=500,
+        #     action_space=config.train.action_space,
+        #     shuffle=False,
+        #     shuffle_buffer_size = 50000,
+        #     num_parallel_reads = 1,
+        #     num_parallel_calls = 1,
+        #     normalize=config.train.normalize_action
+        # )
+        # actions = []
+        # dtw_data_loader_iter = iter(dtw_train_loader)
+        # for i in range(50):
+        #     batch = next(dtw_data_loader_iter)
+        #     actions.append(batch['actions'])
+        # actions = torch.cat(actions, dim = 0)        
+        # from aeon.distances import euclidean_pairwise_distance
+        # dtw_dist = euclidean_pairwise_distance(actions.swapaxes(1,2).numpy())
+        # torch.save(dtw_dist, '/scratch/dcs3zc/droid_101/joint_distance_l2_32.pth', pickle_protocol=4)
+        # print(dtw_dist.shape)
+        # breakpoint()
+        init_train_loader = DroidRldsDataset(
             config.train.data_path,
             config.train.dataset_names[0],
             action_chunk_size=config.algo.horizon.prediction_horizon,
-            batch_size=config.train.batch_size,
+            batch_size=1,
             action_space=config.train.action_space,
-            shuffle=True,
-            shuffle_buffer_size = config.train.shuffle_buffer_size,
-            num_parallel_reads = -1,
-            num_parallel_calls = -1,
-    )   
+            shuffle=False,
+            shuffle_buffer_size = 1,
+            num_parallel_reads = 1,
+            num_parallel_calls = 1,
+            normalize=config.train.normalize_action
+        )
+            
+        init_data_loader_iter = iter(init_train_loader)
+        batch = next(init_data_loader_iter)
+        # import matplotlib.pyplot as plt
+        # plt.imsave('1.png', batch['obs']['table_cam'][0,0].numpy())
+        obs_normalization_stats, action_normalization_stats = None, None
+        if config.train.normalize_action:
+            from robomimic.utils.rlds_utils import get_robomimic_action_stats, get_robomimic_obs_stats
+            obs_normalization_stats = get_robomimic_obs_stats(init_train_loader.normalization_stats, batch["obs"].keys())
+            action_normalization_stats = get_robomimic_action_stats(init_train_loader.normalization_stats)
+            print(obs_normalization_stats, action_normalization_stats)
+        
+        shape_meta = FileUtils.get_shape_metadata_from_dataset(
+            dataset_config=None,
+            batch=batch,
+            action_keys=config.train.action_keys,
+            all_obs_keys=config.all_obs_keys,
+            verbose=True,
+        )
+        print("shape_meta", shape_meta)
+
+        train_loader = DroidRldsDataset(
+                config.train.data_path,
+                config.train.dataset_names[0],
+                action_chunk_size=config.algo.horizon.prediction_horizon,
+                batch_size=config.train.batch_size,
+                action_space=config.train.action_space,
+                shuffle=True,
+                shuffle_buffer_size = config.train.shuffle_buffer_size,
+                num_parallel_reads = -1,
+                num_parallel_calls = -1,
+        )
+        
+    else: # robomimic dataset style        
+        # extract the metadata and shape metadata across all datasets
+        env_meta_list = []
+        shape_meta_list = []
+        if isinstance(config.train.data, str):
+            # if only a single dataset is provided, convert to list
+            with config.values_unlocked():
+                config.train.data = [{"path": config.train.data}]
+        for dataset_cfg in config.train.data:
+            dataset_path = os.path.expanduser(dataset_cfg["path"])
+            if not os.path.exists(dataset_path):
+                raise Exception("Dataset at provided path {} not found!".format(dataset_path))
+
+            # load basic metadata from training file
+            print("\n============= Loaded Environment Metadata =============")
+            env_meta = FileUtils.get_env_metadata_from_dataset(dataset_path=dataset_path)
+
+            # populate language instruction for env in env_meta
+            env_meta["lang"] = dataset_cfg.get("lang", "dummy")
+
+            # update env meta if applicable
+            from robomimic.utils.python_utils import deep_update
+            deep_update(env_meta, config.experiment.env_meta_update_dict)
+            env_meta_list.append(env_meta)
+
+            shape_meta = FileUtils.get_shape_metadata_from_dataset(
+                dataset_config=dataset_cfg,
+                action_keys=config.train.action_keys,
+                all_obs_keys=config.all_obs_keys,
+                verbose=True
+            )
+            shape_meta_list.append(shape_meta)
+
+        if config.experiment.env is not None:
+            # if an environment name is specified, just use this env using the first dataset's metadata
+            # and ignore envs from all datasets
+            env_meta = env_meta_list[0].copy()
+            env_meta["env_name"] = config.experiment.env
+            env_meta_list = [env_meta]
+            print("=" * 30 + "\n" + "Replacing Env to {}\n".format(env_meta["env_name"]) + "=" * 30)
+
+        # create environment
+        envs = OrderedDict()
+        if config.experiment.rollout.enabled:
+            # create environments for validation runs
+            for env_i in range(len(env_meta_list)):
+                # check if this env should be evaluated
+                dataset_cfg = config.train.data[env_i]
+                do_eval = dataset_cfg.get("eval", True)
+                if not do_eval:
+                    continue
+
+                env_meta = env_meta_list[env_i]
+                shape_meta = shape_meta_list[env_i]
+
+                env_names = [env_meta["env_name"]]
+                if (env_i == 0) and (config.experiment.additional_envs is not None):
+                    # if additional environments are specified, add them to the list
+                    # all additional environments use env_meta from the first dataset
+                    for name in config.experiment.additional_envs:
+                        env_names.append(name)
+
+                # create environment for each env_name
+                def create_env(env_name):
+                    env_kwargs = dict(
+                        env_meta=env_meta,
+                        env_name=env_name,
+                        render=False,
+                        render_offscreen=config.experiment.render_video,
+                        use_image_obs=shape_meta["use_images"],
+                    )
+                    env = EnvUtils.create_env_from_metadata(**env_kwargs)
+                    # handle environment wrappers
+                    env = EnvUtils.wrap_env_from_config(env, config=config)  # apply environment warpper, if applicable
+                    return env
+                for env_name in env_names:
+                    env = create_env(env_name)
+                    env_key = os.path.splitext(os.path.basename(dataset_cfg["path"]))[0] if not dataset_cfg.get("key", None) else dataset_cfg["key"]
+                    envs[env_key] = env
+                    print(env)
+
+        print("")
+
+        # load training data
+        trainset, validset = TrainUtils.load_data_for_training(
+            config, obs_keys=shape_meta["all_obs_keys"])
+        train_sampler = trainset.get_dataset_sampler()
+        print("\n============= Training Dataset =============")
+        print(trainset)
+        print("")
+        if validset is not None:
+            print("\n============= Validation Dataset =============")
+            print(validset)
+            print("")
+
+        # maybe retreve statistics for normalizing observations
+        obs_normalization_stats = None
+        if config.train.hdf5_normalize_obs:
+            obs_normalization_stats = trainset.get_obs_normalization_stats()
+
+        # maybe retreve statistics for normalizing actions
+        action_normalization_stats = trainset.get_action_normalization_stats()
+
+        # initialize data loaders
+        train_loader = DataLoader(
+            dataset=trainset,
+            sampler=train_sampler,
+            batch_size=config.train.batch_size,
+            shuffle=(train_sampler is None),
+            num_workers=config.train.num_data_workers,
+            drop_last=True
+        )
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
 
     # add info to optim_params
     with config.values_unlocked():
         # number of learning steps per epoch (defaults to a full dataset pass)
-        config.experiment.epoch_every_n_steps = int(0.9 * config.train.shuffle_buffer_size / config.train.batch_size) #each epoch is a 80% pass through the buffer
-        train_num_steps = config.experiment.epoch_every_n_steps # arbitrary value   
+        if "droid" in config.train.data_format:
+            config.experiment.epoch_every_n_steps = int(0.9 * config.train.shuffle_buffer_size / config.train.batch_size) #each epoch is a 80% pass through the buffer
+            train_num_steps = config.experiment.epoch_every_n_steps # arbitrary value   
+        else:
+            train_num_steps = len(train_loader)
         if "optim_params" in config.algo:
             # add info to optim_params of each net
             for k in config.algo.optim_params:
                 config.algo.optim_params[k]["num_train_batches"] = train_num_steps
                 config.algo.optim_params[k]["num_epochs"] = config.train.num_epochs
-
-    assert config.experiment.epoch_every_n_steps is not None and config.train.num_epochs is not None, "epoch_every_n_steps and num_epochs must be set for training with RLDS dataset"
-
-    # number of learning steps per epoch (defaults to a full dataset pass)
-    train_num_steps = config.experiment.epoch_every_n_steps
-
-    # add info to optim_params
-    with config.values_unlocked():
-        if "optim_params" in config.algo:
-            # add info to optim_params of each net
-            for k in config.algo.optim_params:
-                config.algo.optim_params[k]["num_train_batches"] = len(train_loader) if train_num_steps is None else train_num_steps
-                config.algo.optim_params[k]["num_epochs"] = config.train.num_epochs
+                
+    if "droid" in config.train.data_format:
+        assert config.experiment.epoch_every_n_steps is not None and config.train.num_epochs is not None, "epoch_every_n_steps and num_epochs must be set for training with RLDS dataset"
 
     # setup for a new training run
     data_logger = DataLogger(
@@ -218,6 +344,9 @@ def train(config, device, resume=False):
     # flush_warnings()
     # print("*" * 50)
     # print("")
+    best_valid_loss = None
+    best_return = {k: -np.inf for k in envs} if "droid" not in config.train.data_format and config.experiment.rollout.enabled else None
+    best_success_rate = {k: -1. for k in envs} if "droid" not in config.train.data_format and config.experiment.rollout.enabled else None
     last_ckpt_time = time.time()
 
     start_epoch = 1 # epoch numbers start at 1
@@ -251,9 +380,11 @@ def train(config, device, resume=False):
                 (epoch > 0) and (epoch % config.experiment.save.every_n_epochs == 0)
             epoch_list_check = (epoch in config.experiment.save.epochs)
             should_save_ckpt = (time_check or epoch_check or epoch_list_check)
+        ckpt_reason = None
         if should_save_ckpt:
             last_ckpt_time = time.time()
-
+            ckpt_reason = "time"
+        
         print("Train Epoch {}".format(epoch))
         print(json.dumps(step_log, sort_keys=True, indent=4))
         for k, v in step_log.items():
@@ -261,10 +392,90 @@ def train(config, device, resume=False):
                 data_logger.record("Timing_Stats/Train_{}".format(k[5:]), v, epoch)
             else:
                 data_logger.record("Train/{}".format(k), v, epoch)
+                
+        
+        
+        
+        
+        
+        
+
+        
+        if "droid" not in config.train.data_format:
+            # do rollouts at fixed rate or if it's time to save a new ckpt
+            rollout_check = (epoch % config.experiment.rollout.rate == 0) or (should_save_ckpt and ckpt_reason == "time")
+            if config.experiment.rollout.enabled and (epoch > config.experiment.rollout.warmstart) and rollout_check:
+                # wrap model as a RolloutPolicy to prepare for rollouts
+                rollout_model = RolloutPolicy(
+                    model,
+                    obs_normalization_stats=obs_normalization_stats,
+                    action_normalization_stats=action_normalization_stats,
+                )
+
+                num_episodes = config.experiment.rollout.n
+                all_rollout_logs, _ = TrainUtils.rollout_with_stats(
+                    config=config,
+                    policy=rollout_model,
+                    envs=envs,
+                    dataset=trainset,
+                    horizon=config.experiment.rollout.horizon,
+                    use_goals=config.use_goals,
+                    num_episodes=num_episodes,
+                    render=False,
+                    video_dir=video_dir if config.experiment.render_video else None,
+                    epoch=epoch,
+                    video_skip=config.experiment.get("video_skip", 5),
+                    terminate_on_success=config.experiment.rollout.terminate_on_success
+                )
+
+                # summarize results from rollouts to tensorboard and terminal
+                for env_name in all_rollout_logs:
+                    rollout_logs = all_rollout_logs[env_name]
+                    for k, v in rollout_logs.items():
+                        if k.startswith("Time_"):
+                            data_logger.record("Timing_Stats/Rollout_{}_{}".format(env_name, k[5:]), v, epoch)
+                        else:
+                            data_logger.record("Rollout/{}/{}".format(k, env_name), v, epoch, log_stats=True)
+
+                    print("\nEpoch {} Rollouts took {}s (avg) with results:".format(epoch, rollout_logs["time"]))
+                    print('Env: {}'.format(env_name))
+                    print(json.dumps(rollout_logs, sort_keys=True, indent=4))
+
+                # checkpoint and video saving logic
+                updated_stats = TrainUtils.should_save_from_rollout_logs(
+                    all_rollout_logs=all_rollout_logs,
+                    best_return=best_return,
+                    best_success_rate=best_success_rate,
+                    epoch_ckpt_name=epoch_ckpt_name,
+                    save_on_best_rollout_return=config.experiment.save.on_best_rollout_return,
+                    save_on_best_rollout_success_rate=config.experiment.save.on_best_rollout_success_rate,
+                )
+                best_return = updated_stats["best_return"]
+                best_success_rate = updated_stats["best_success_rate"]
+                epoch_ckpt_name = updated_stats["epoch_ckpt_name"]
+                should_save_ckpt = (config.experiment.save.enabled and updated_stats["should_save_ckpt"]) or should_save_ckpt
+                if updated_stats["ckpt_reason"] is not None:
+                    ckpt_reason = updated_stats["ckpt_reason"]
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
 
         # get variable state for saving model
         variable_state = dict(
             epoch=epoch,
+            best_valid_loss=best_valid_loss,
+            best_return=best_return,
+            best_success_rate=best_success_rate,
         )
 
         # Save model checkpoints based on conditions (success rate, validation loss, etc)

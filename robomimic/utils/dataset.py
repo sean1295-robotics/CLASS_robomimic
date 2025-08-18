@@ -112,7 +112,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         self.lang = lang
         self._lang_emb = None
         if lang is not None:
-            self._lang_emb = LangUtils.get_lang_emb(self.lang).cpu()
+            self._lang_emb = LangUtils.get_lang_emb(self.lang).detach().cpu().numpy()
 
         # get all keys that needs to be fetched
         self.obs_keys = tuple(obs_keys)
@@ -354,9 +354,14 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         obs_normalization_stats = { k : {} for k in merged_stats }
         for k in merged_stats:
-            # note we add a small tolerance of 1e-3 for std
-            obs_normalization_stats[k]["offset"] = merged_stats[k]["mean"].astype(np.float32)
-            obs_normalization_stats[k]["scale"] = (np.sqrt(merged_stats[k]["sqdiff"] / merged_stats[k]["n"]) + 1e-3).astype(np.float32)
+            if "image" in k: # 
+                obs_normalization_stats[k]["offset"] = None
+                obs_normalization_stats[k]["scale"] = None
+            else: # only normalize non-image observations
+                # note we add a small tolerance of 1e-3 for std
+                obs_normalization_stats[k]["offset"] = merged_stats[k]["mean"].astype(np.float32)
+                obs_normalization_stats[k]["scale"] = (np.sqrt(merged_stats[k]["sqdiff"] / merged_stats[k]["n"]) + 1e-3).astype(np.float32)
+        
         return obs_normalization_stats
 
     def get_obs_normalization_stats(self):

@@ -28,9 +28,9 @@
         "video_skip": 5,
         "rollout": {
             "enabled": true,
-            "n": 50,
+            "n": 25,
             "horizon": 400,
-            "rate": 25,
+            "rate": 10,
             "warmstart": 0,
             "terminate_on_success": true
         },
@@ -39,13 +39,18 @@
                 "controller_configs": {
                     "body_parts": {
                         "right": {
-                            "input_type": "absolute"
+                            "type": "JOINT_POSITION",
+                            "input_type": "absolute",
+                            "input_max": 3.1416,
+                            "input_min": -3.1416,
+                            "output_max": 3.1416,
+                            "output_min": -3.1416
                         }
                     }                    
                 }
             }
         },
-        "ckpt_path": "/scratch/dcs3zc/robomimic/robomimic_v151/dp_imn_droid_class/20250731173231/models/model_epoch_100.pth"
+        "ckpt_path": null
     },
     "train": {
         "data": [
@@ -60,7 +65,7 @@
         "hdf5_cache_mode": "all",
         "hdf5_use_swmr": true,
         "hdf5_load_next_obs": false,
-        "hdf5_normalize_obs": false,
+        "hdf5_normalize_obs": true,
         "hdf5_filter_key": null,
         "hdf5_validation_filter_key": null,
         "seq_length": 16,
@@ -68,26 +73,16 @@
         "frame_stack": 1,
         "pad_frame_stack": true,
         "dataset_keys": [
-            "action_dict/abs_pos", 
-            "action_dict/abs_rot_6d", 
-            "action_dict/gripper",
+            "actions_abs_joint",
             "rewards",
             "dones",
             "lang_emb"
         ],
         "action_keys": [
-        "action_dict/abs_pos", "action_dict/abs_rot_6d", "action_dict/gripper"
+        "actions_abs_joint"
         ],
         "action_config": {
-            "action_dict/abs_pos": {
-                "normalization": "min_max",  
-                "rot_conversion": null 
-            },
-            "action_dict/abs_rot_6d": {
-                "normalization": "min_max",  
-                "rot_conversion": "axis_angle_to_6d"
-            },
-            "action_dict/gripper": {
+            "actions_abs_joint": {
                 "normalization": "min_max",  
                 "rot_conversion": null 
             }
@@ -107,6 +102,7 @@
                 "optimizer_type": "adamw",
                 "learning_rate": {
                     "initial": 0.0001,
+                    "encoder_lr_reduction_rate": 0.1,
                     "decay_factor": 0.1,
                     "step_every_batch": true,
                     "scheduler_type": "cosine",
@@ -156,7 +152,8 @@
             "set_alpha_to_one": true,
             "steps_offset": 0,
             "prediction_type": "epsilon"
-        }
+        },
+        "class_weight": 1.0
     },
     "observation": {
         "modalities": {
@@ -186,11 +183,14 @@
                 "obs_randomizer_kwargs": {}
             },
             "rgb": {
+                "core_class": "VisualCoreLanguageConditioned",
                 "core_kwargs": {    
                     "input_shape": [3, 224, 224],
-                    "backbone_class" : "ResNet18Conv", 
-                    "pretrained": true, 
-                    "input_coord_conv": false,
+                    "backbone_class" : "ResNet18ConvFiLM", 
+                    "backbone_kwargs": {
+                        "pretrained": true,
+                        "input_coord_conv": false
+                    },
                     "pool_class":"SpatialSoftmax",
                     "pool_kwargs":{"num_kp": null,
                                    "flatten": true,
@@ -199,13 +199,9 @@
                                   },
                     "feature_dimension": null
                 },
-                "obs_randomizer_class": "CropRandomizer",
+                "obs_randomizer_class": "SquareCropNormalizer",
                 "obs_randomizer_kwargs": {
-                    "input_shape": [3, 224, 224],
-                    "crop_height": 224,
-                    "crop_width": 224,
-                    "num_crops": 1,
-                    "pos_enc" : false
+                    "output_size": 224
                 }
             },
             "depth": {

@@ -230,7 +230,6 @@ def create_env_from_metadata(
     env_kwargs = env_meta["env_kwargs"]
     env_kwargs["env_name"] = env_name
     lang = env_meta.get("lang", None)
-    print("lang is {}".format(lang))
     env = create_env(
         env_type=env_type,
         render=render, 
