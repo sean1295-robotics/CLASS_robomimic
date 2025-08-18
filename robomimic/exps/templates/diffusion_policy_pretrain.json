@@ -49,7 +49,7 @@
     },
     "train": {
         "data": null,
-        "output_dir": "logs",
+        "output_dir": "../logs",
         "normalize_weights_by_ds_size": false,
         "num_data_workers": 0,
         "hdf5_cache_mode": "all",

@@ -16,7 +16,7 @@ $ bash ./scripts/precompute_pretrain.sh
 ```
 -------
 ## Finetune
-Change `"experiment/ckpt_path"` argument from `robomimic/exps/templates/diffusion_policy_finetune.json` by selecting the last (or best) checkpoint from pretraining. (e.g., `robomimic/logs/dp_imn_pretrain/YYYYMMDDHHMMSS/models/model_epoch_50_image_v15_success_0.92.pth`) and run the following command.
+Change `"experiment/ckpt_path"` argument from `robomimic/exps/templates/diffusion_policy_finetune.json` by selecting the last (or best) checkpoint from pretraining. (e.g., `logs/dp_imn_pretrain/YYYYMMDDHHMMSS/models/model_epoch_50_image_v15_success_0.92.pth`) and run the following command.
 ```
 $ bash ./scripts/finetune.sh
 ```
