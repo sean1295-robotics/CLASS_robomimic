@@ -362,7 +362,6 @@ class SequenceDataset(torch.utils.data.Dataset):
                 obs_normalization_stats[k]["offset"] = merged_stats[k]["mean"].astype(np.float32)
                 obs_normalization_stats[k]["scale"] = (np.sqrt(merged_stats[k]["sqdiff"] / merged_stats[k]["n"]) + 1e-3).astype(np.float32)
 
-
         return obs_normalization_stats
 
     def get_obs_normalization_stats(self):
@@ -703,6 +702,8 @@ class CLASS_SequenceDataset(SequenceDataset):
             for i in range(len(self)):
                 nacs.append(super().__getitem__(i)["actions"])
             nacs = np.stack(nacs, axis=0).transpose(0, 2, 1) # (B, T, D) -> (B, D, T)
+            if nacs.shape[1] == 10: #if 6d orientation is used, scale down by 2.
+                nacs[:,3:9] /= 2
             print("Computing pairwise DTW distances (One-time Operation). This takes a while and requires large memory for big datasets.")
             dists = TensorUtils.to_tensor(dtw_pairwise_distance(nacs))
             print("Pairwise DTW distances computed.")

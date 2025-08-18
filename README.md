@@ -21,6 +21,13 @@ Change `"experiment/ckpt_path"` argument from `robomimic/exps/templates/diffusio
 $ bash ./scripts/finetune.sh
 ```
 
+-------
+## Train from Scratch 🤔
+Alternatively, you can also train from scratch for ablation.
+```
+$ bash ./scripts/finetune.sh
+```
+
 <!-- ## Citation
 
 Please cite [this paper](https://arxiv.org/abs/2108.03298) if you use this framework in your work:

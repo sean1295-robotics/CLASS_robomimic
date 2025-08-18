@@ -39,7 +39,7 @@
                 "controller_configs": {
                     "body_parts": {
                         "right": {
-                            "control_delta": false
+                            "input_type": "absolute"
                         }
                     }                    
                 }
@@ -70,7 +70,9 @@
             "dones"
         ],
         "action_keys": [
-        "action_dict/abs_pos", "action_dict/abs_rot_6d", "action_dict/gripper"
+        "action_dict/abs_pos", 
+        "action_dict/abs_rot_6d", 
+        "action_dict/gripper"
         ],
         "action_config": {
             "action_dict/abs_pos": {

@@ -30,8 +30,8 @@
             "enabled": true,
             "n": 50,
             "horizon": 400,
-            "rate": 10,
-            "warmstart": 0,
+            "rate": 2,
+            "warmstart": 30,
             "terminate_on_success": true,
             "nonparam_nnn": 64,
             "nonparam_use_cossim": true,
@@ -73,7 +73,9 @@
             "dones"
         ],
         "action_keys": [
-        "action_dict/abs_pos", "action_dict/abs_rot_6d", "action_dict/gripper"
+        "action_dict/abs_pos", 
+        "action_dict/abs_rot_6d", 
+        "action_dict/gripper"
         ],
         "action_config": {
             "action_dict/abs_pos": {

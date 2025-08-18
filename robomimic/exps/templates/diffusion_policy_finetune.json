@@ -39,13 +39,13 @@
                 "controller_configs": {
                     "body_parts": {
                         "right": {
-                            "control_delta": false
+                            "input_type": "absolute"
                         }
                     }                    
                 }
             }
         },
-        "ckpt_path": "../logs/dp_imn_pretrain/20250715105413/models/model_epoch_165_image_v15_success_0.92.pth"
+        "ckpt_path": "logs/dp_imn_pretrain/20250818003553/models/model_epoch_50_image_v15_success_0.96.pth"
     },
     "train": {
         "data": null,
@@ -70,7 +70,9 @@
             "dones"
         ],
         "action_keys": [
-        "action_dict/abs_pos", "action_dict/abs_rot_6d", "action_dict/gripper"
+        "action_dict/abs_pos", 
+        "action_dict/abs_rot_6d", 
+        "action_dict/gripper"
         ],
         "action_config": {
             "action_dict/abs_pos": {
