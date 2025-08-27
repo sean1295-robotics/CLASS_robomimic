@@ -121,6 +121,11 @@ class BaseConfig(Config):
         self.experiment.rollout.warmstart = 0                       # number of epochs to wait before starting rollouts
         self.experiment.rollout.terminate_on_success = True         # end rollout early after task success
 
+        ## non-parametric evaluation config ##
+        self.experiment.rollout.nonparam_nnn = 64 # number of nearest neights to retrieve
+        self.experiment.rollout.nonparam_use_cossim = True # whether or not to use cosine similarity. If False, uses L2 distance.
+        self.experiment.rollout.nonparam_temperature = 0.01 # sensitivity to the distance to neighbors
+
         # for updating the evaluation env meta data
         self.experiment.env_meta_update_dict = Config()
         self.experiment.env_meta_update_dict.do_not_lock_keys()

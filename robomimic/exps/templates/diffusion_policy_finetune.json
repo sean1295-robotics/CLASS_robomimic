@@ -1,12 +1,12 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_finetune_aug",
+        "name": "dp_imn_finetune",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
             "log_tb": false,
-            "log_wandb": true,
+            "log_wandb": false,
             "wandb_proj_name": "diffusion_policy"
         },
         "save": {
@@ -45,17 +45,17 @@
                 }
             }
         },
-        "ckpt_path": "/scratch/dcs3zc/robomimic/robomimic_v151/dp_imn_pretrain/20250715105413/models/model_epoch_165_image_v15_success_0.84.pth"
+        "ckpt_path": "logs/dp_imn_pretrain/20250818003553/models/model_epoch_50_image_v15_success_0.96.pth"
     },
     "train": {
         "data": null,
-        "output_dir": "/scratch/dcs3zc/robomimic/robomimic_v151",
+        "output_dir": "../logs",
         "normalize_weights_by_ds_size": false,
         "num_data_workers": 0,
         "hdf5_cache_mode": "all",
         "hdf5_use_swmr": true,
         "hdf5_load_next_obs": false,
-        "hdf5_normalize_obs": false,
+        "hdf5_normalize_obs": true,
         "hdf5_filter_key": null,
         "hdf5_validation_filter_key": null,
         "seq_length": 16,
@@ -70,7 +70,9 @@
             "dones"
         ],
         "action_keys": [
-        "action_dict/abs_pos", "action_dict/abs_rot_6d", "action_dict/gripper"
+        "action_dict/abs_pos", 
+        "action_dict/abs_rot_6d", 
+        "action_dict/gripper"
         ],
         "action_config": {
             "action_dict/abs_pos": {

@@ -1,12 +1,12 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_pretrain_1536",
+        "name": "dp_imn_pretrain",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
             "log_tb": false,
-            "log_wandb": true,
+            "log_wandb": false,
             "wandb_proj_name": "diffusion_policy"
         },
         "save": {
@@ -30,9 +30,12 @@
             "enabled": true,
             "n": 50,
             "horizon": 400,
-            "rate": 25,
-            "warmstart": 0,
-            "terminate_on_success": true
+            "rate": 2,
+            "warmstart": 30,
+            "terminate_on_success": true,
+            "nonparam_nnn": 64,
+            "nonparam_use_cossim": true,
+            "nonparam_temperature": 0.01
         },
         "env_meta_update_dict": {
             "env_kwargs": {
@@ -49,13 +52,13 @@
     },
     "train": {
         "data": null,
-        "output_dir": "/scratch/dcs3zc/robomimic/robomimic_v151",
+        "output_dir": "../logs",
         "normalize_weights_by_ds_size": false,
         "num_data_workers": 0,
         "hdf5_cache_mode": "all",
         "hdf5_use_swmr": true,
         "hdf5_load_next_obs": false,
-        "hdf5_normalize_obs": false,
+        "hdf5_normalize_obs": true,
         "hdf5_filter_key": null,
         "hdf5_validation_filter_key": null,
         "seq_length": 16,
@@ -70,7 +73,9 @@
             "dones"
         ],
         "action_keys": [
-        "action_dict/abs_pos", "action_dict/abs_rot_6d", "action_dict/gripper"
+        "action_dict/abs_pos", 
+        "action_dict/abs_rot_6d", 
+        "action_dict/gripper"
         ],
         "action_config": {
             "action_dict/abs_pos": {
@@ -88,8 +93,8 @@
         },
         "goal_mode": null,
         "cuda": true,
-        "batch_size": 1536,
-        "num_epochs": 5000,
+        "batch_size": 160,
+        "num_epochs": 50,
         "seed": 1,
         "max_grad_norm": null,
         "temperature": 0.05,
@@ -98,9 +103,9 @@
     "algo": {
         "optim_params": {
             "policy": {
-                "optimizer_type": "sgd",
+                "optimizer_type": "lars",
                 "learning_rate": {
-                    "initial": 0.04,
+                    "initial": 0.4,
                     "step_every_batch": true,
                     "scheduler_type": "cosine",
                     "num_cycles": 0.5,
@@ -193,7 +198,7 @@
                                   },
                     "feature_dimension": null
                 },
-                "obs_randomizer_class": "CompoundRandomizer",
+                "obs_randomizer_class": "CropRandomizer",
                 "obs_randomizer_kwargs": {
                     "input_shape": [3, 224, 224],
                     "crop_height": 224,
