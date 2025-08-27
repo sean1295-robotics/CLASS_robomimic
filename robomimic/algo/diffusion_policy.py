@@ -244,7 +244,8 @@ class DiffusionPolicyUNet(PolicyAlgo):
                         # maybe process encoder input with randomizer
                         for obs_randomizer in obs_randomizers:
                             if obs_randomizer is not None:
-                                img = obs_randomizer.forward_in(img)                    
+                                img = obs_randomizer.forward_in(img)       
+                                img = obs_randomizer.forward_out(img)                 
                         img_features.append(obs_net.forward(img))
                 img_features = torch.cat(img_features, dim=-1)                     
                 assert img_features.ndim == 2  
