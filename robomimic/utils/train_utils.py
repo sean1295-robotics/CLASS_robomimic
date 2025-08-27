@@ -67,10 +67,10 @@ def get_exp_dir(config, auto_remove_exp_dir=False, resume=False):
         time_str = sorted(subdir_lst)[-1]  # get the most recent subdirectory
         assert os.path.isdir(os.path.join(base_output_dir, time_str)), "Found item {} that is not a subdirectory in {}".format(time_str, base_output_dir)
     elif os.path.exists(base_output_dir):
-        # if not auto_remove_exp_dir:
-        #     ans = input("WARNING: model directory ({}) already exists! \noverwrite? (y/n)\n".format(base_output_dir))
-        # else:
-        ans = "y"
+        if not auto_remove_exp_dir:
+            ans = input("WARNING: model directory ({}) already exists! \noverwrite? (y/n)\n".format(base_output_dir))
+        else:
+            ans = "y"
         if ans == "y":
             print("REMOVING")
             shutil.rmtree(base_output_dir)

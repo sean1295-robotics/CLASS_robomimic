@@ -482,8 +482,8 @@ def normalize_dict(dict, normalization_stats):
     assert set(dict_keys).issubset(normalization_stats), f"dict keys {list(dict_keys)} \
          should be subset of normalization stats keys {list(normalization_stats.keys())}"
 
-    for m in dict:
-        if "image" not in m and "lang" not in m:
+    for m in dict_keys:
+        if normalization_stats[m] is not None:
             offset = normalization_stats[m]["offset"][0]
             scale = normalization_stats[m]["scale"][0]
 

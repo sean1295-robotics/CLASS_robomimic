@@ -133,7 +133,7 @@ class DiffusionPolicyUNet(PolicyAlgo):
             from robomimic.utils.class_utils import PairwiseDistanceCDFNormalizer
             self.dist_normalizer = PairwiseDistanceCDFNormalizer(
                 torch.from_numpy(distance), 
-                quantile=0.01,
+                quantile=self.algo_config.class_quantile,
                 n_quantiles=1000
             ).to_device('cuda')
             del distance
@@ -157,11 +157,10 @@ class DiffusionPolicyUNet(PolicyAlgo):
         Tp = self.algo_config.horizon.prediction_horizon
 
         input_batch = dict()
-        if isinstance(batch["obs"]["lang_emb"], str):
+        if "lang_emb" in batch["obs"] and isinstance(batch["obs"]["lang_emb"][0], bytes):
             lang_emb_decoded = [inst.decode() if len(inst) else "Do something useful" for inst in batch["obs"]["lang_emb"]]                
             batch["obs"]["lang_emb"] = LangUtils.batch_get_lang_emb(lang_emb_decoded)
             batch["obs"]["lang_emb"] = batch["obs"]["lang_emb"].unsqueeze(1).repeat(1, To, 1)
-            
         input_batch["obs"] = {k: batch["obs"][k][:, :To, :] for k in batch["obs"]}
         input_batch["goal_obs"] = batch.get("goal_obs", None) # goals may not be present
         input_batch["actions"] = batch["actions"][:, :Tp, :]
@@ -245,10 +244,10 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 # first two dimensions should be [B, T] for inputs
                 assert inputs["obs"][k].ndim - 2 == len(self.obs_shapes[k])
             obs_features = TensorUtils.time_distributed(inputs, self.nets["policy"]["obs_encoder"], inputs_as_kwargs=True)
-            assert obs_features.ndim == 3  # [B, T, D]
-
+            assert obs_features.ndim == 3  # [B, T, D]            
+            
             obs_cond = obs_features.flatten(start_dim=1)
-
+            
             if self.algo_config.class_weight:
                 processed_actions = actions.clone().detach()
                 # processed_actions[..., 3:9] /= 2
@@ -264,7 +263,10 @@ class DiffusionPolicyUNet(PolicyAlgo):
                 soft_weights = 1-cdf_vals
                 pos_mask = soft_weights > 0
                 
-                obs_cond_normalized = F.normalize(obs_cond, dim=1) 
+                # only use image features
+                image_dim = sum([v.output_shape(v.input_shape)[0] for k,v in self.nets["policy"]["obs_encoder"].nets['obs'].obs_nets.items() if 'cam' in k])
+                obs_cond_normalized = F.normalize(obs_cond[:, :image_dim], dim=1) 
+                
                 temperature = 0.07
                 sim_matrix = torch.div(torch.matmul(obs_cond_normalized, obs_cond_normalized.T), temperature)
                 

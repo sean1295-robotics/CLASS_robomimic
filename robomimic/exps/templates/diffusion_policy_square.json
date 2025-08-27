@@ -1,7 +1,7 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_square_finetune",
+        "name": "dp_imn_square",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -30,7 +30,7 @@
             "enabled": true,
             "n": 25,
             "horizon": 400,
-            "rate": 10,
+            "rate": 50,
             "warmstart": 0,
             "terminate_on_success": true
         },
@@ -92,9 +92,7 @@
         "batch_size": 64,
         "num_epochs": 500,
         "seed": 1,
-        "max_grad_norm": null,
-        "temperature": 0.05,
-        "dist_quantile": 0.025
+        "max_grad_norm": null
     },
     "algo": {
         "optim_params": {
@@ -102,7 +100,7 @@
                 "optimizer_type": "adamw",
                 "learning_rate": {
                     "initial": 0.0001,
-                    "encoder_lr_reduction_rate": 0.1,
+                    "encoder_lr_reduction_rate": 1,
                     "decay_factor": 0.1,
                     "step_every_batch": true,
                     "scheduler_type": "cosine",
@@ -153,7 +151,8 @@
             "steps_offset": 0,
             "prediction_type": "epsilon"
         },
-        "class_weight": 1.0
+        "class_weight": 0.0,
+        "class_quantile": 0.001
     },
     "observation": {
         "modalities": {
@@ -183,10 +182,9 @@
                 "obs_randomizer_kwargs": {}
             },
             "rgb": {
-                "core_class": "VisualCoreLanguageConditioned",
                 "core_kwargs": {    
                     "input_shape": [3, 224, 224],
-                    "backbone_class" : "ResNet18ConvFiLM", 
+                    "backbone_class" : "ResNet18Conv", 
                     "backbone_kwargs": {
                         "pretrained": true,
                         "input_coord_conv": false
@@ -194,14 +192,18 @@
                     "pool_class":"SpatialSoftmax",
                     "pool_kwargs":{"num_kp": null,
                                    "flatten": true,
-                                   "learnable_temperature" : true,
-                                   "noise_std" : 0.001
+                                   "learnable_temperature" : false,
+                                   "noise_std" : 0.000
                                   },
                     "feature_dimension": null
                 },
-                "obs_randomizer_class": "SquareCropNormalizer",
+                "obs_randomizer_class": "CropRandomizer",
                 "obs_randomizer_kwargs": {
-                    "output_size": 224
+                    "input_shape": [3, 224, 224],
+                    "crop_height": 224,
+                    "crop_width": 224,
+                    "num_crops": 1,
+                    "pos_enc" : false
                 }
             },
             "depth": {

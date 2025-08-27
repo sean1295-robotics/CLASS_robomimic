@@ -80,3 +80,5 @@ class DiffusionPolicyConfig(BaseConfig):
         
         # CLASS parameters
         self.algo.class_weight = 0.0 # set to 0.0 to disable class weights
+        self.algo.class_quantile = 0.01 # quantile for setting soft positive pairs
+        

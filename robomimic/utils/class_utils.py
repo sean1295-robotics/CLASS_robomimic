@@ -8,7 +8,7 @@ class PairwiseDistanceCDFNormalizer:
     Maps distances [0, threshold] to CDF values [0, 1]
     '''
     
-    def __init__(self, dist_matrix, threshold=None, quantile=0.95, n_quantiles=1000, device=None):
+    def __init__(self, dist_matrix, threshold=None, quantile=0.01, n_quantiles=10000, device=None):
         """
         Args:
             dist_matrix: Square distance matrix (N x N)

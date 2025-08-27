@@ -1,7 +1,7 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_roboarena_film_sample_smallBS_class",
+        "name": "dp_imn_roboarena_film_sample_smallBS_class_RN50",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -34,7 +34,7 @@
         "dataset_names": ["droid_101"],
         "normalize_action" : true,
         "action_space": "abs_joint_pos",
-        "shuffle_buffer_size": 500000,
+        "shuffle_buffer_size": 400000,
         "sample_weights": [1],
         "subsample_length": 100,
         "num_parallel_calls": 200,
@@ -74,9 +74,7 @@
         "batch_size": 250,
         "num_epochs": 5000,
         "seed": 1,
-        "max_grad_norm": null,
-        "temperature": 0.05,
-        "dist_quantile": 0.025
+        "max_grad_norm": null
     },
     "algo": {
         "optim_params": {
@@ -135,7 +133,8 @@
             "steps_offset": 0,
             "prediction_type": "epsilon"
         },
-        "class_weight": 1.0
+        "class_weight": 1.0,
+        "class_quantile": 0.01
     },
     "observation": {
         "modalities": {
@@ -169,7 +168,7 @@
                     "input_shape": [3, 224, 224],
                     "feature_dimension": null,
                     "flatten": true,
-                    "backbone_class": "ResNet18ConvFiLM",
+                    "backbone_class": "ResNet50ConvFiLM",
                     "backbone_kwargs": {
                         "pretrained": true,
                         "input_coord_conv": false
