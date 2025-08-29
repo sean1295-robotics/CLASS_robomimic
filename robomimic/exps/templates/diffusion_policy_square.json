@@ -1,7 +1,7 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_square",
+        "name": "dp_imn_square_class",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -151,7 +151,7 @@
             "steps_offset": 0,
             "prediction_type": "epsilon"
         },
-        "class_weight": 0.0,
+        "class_weight": 1.0,
         "class_quantile": 0.001
     },
     "observation": {

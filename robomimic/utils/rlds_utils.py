@@ -4,6 +4,7 @@ from typing import Any, Dict
 import tensorflow as tf
 import torch
 import tensorflow_graphics.geometry.transformation as tfg
+import tensorflow_addons as tfa
 import numpy as np
 import hashlib
 
@@ -363,15 +364,18 @@ class DroidRldsDataset:
             
             # Define the configuration for the augmentations
             augmentation_config = {
-                "augment_order": ["random_resized_crop", "random_brightness", "random_contrast", "random_saturation", "random_hue"],
+                "augment_order": ["random_resized_crop", "random_rotation", "random_brightness", "random_contrast", "random_saturation", "random_hue"],
                 "random_resized_crop": {
                     "scale": [0.95, 1.0],
                     "ratio": [0.8, 1.2],
                 },
+                "random_rotation": {
+                    "degrees": 5  # rotation range from -5 to +5 degrees
+                },
                 "random_brightness": [0.3],
                 "random_contrast": [0.6, 1.4],
                 "random_saturation": [0.5, 1.5],
-                "random_hue": [0.3],
+                "random_hue": [0.2],
             }
 
             # Define a helper function to apply all augmentations to a single image
@@ -406,6 +410,15 @@ class DroidRldsDataset:
                         
                         # Resize the cropped image back to the original size
                         img = tf.image.resize(img, [original_height, original_width])
+                        
+                    elif aug_name == "random_rotation":
+                        max_degrees = augmentation_config["random_rotation"]["degrees"]
+                        # Generate random angle in radians (TensorFlow uses radians)
+                        angle_radians = tf.random.uniform([], 
+                                                        minval=-max_degrees * (3.14159 / 180), 
+                                                        maxval=max_degrees * (3.14159 / 180))
+                        # Apply rotation using tf.contrib.image.rotate or tfa.image.rotate                        
+                        img = tfa.image.rotate(img, angle_radians, interpolation='bilinear')
 
                     elif aug_name == "random_brightness":
                         max_delta = augmentation_config["random_brightness"][0]

@@ -626,6 +626,181 @@ class CropRandomizer(Randomizer):
         return msg
     
 import torch.nn.functional as F
+
+class CropResizeRandomizer(Randomizer):
+    """
+    Randomly sample crops at input, resize them to target size, and then average across crop features at output.
+    """
+    def __init__(
+        self,
+        input_shape,
+        crop_height=76,
+        crop_width=76,
+        resize_height=64,
+        resize_width=64,
+        num_crops=1,
+        pos_enc=False,
+        interpolation_mode='bilinear',
+    ):
+        """
+        Args:
+            input_shape (tuple, list): shape of input (not including batch dimension)
+            crop_height (int): crop height
+            crop_width (int): crop width
+            resize_height (int): target height after resizing
+            resize_width (int): target width after resizing
+            num_crops (int): number of random crops to take
+            pos_enc (bool): if True, add 2 channels to the output to encode the spatial
+                location of the cropped pixels in the source image
+            interpolation_mode (str): interpolation mode for resizing ('bilinear', 'bicubic', 'nearest')
+        """
+        super(CropResizeRandomizer, self).__init__()
+
+        assert len(input_shape) == 3 # (C, H, W)
+        assert crop_height <= input_shape[1]
+        assert crop_width <= input_shape[2]
+
+        self.input_shape = input_shape
+        self.crop_height = crop_height
+        self.crop_width = crop_width
+        self.resize_height = resize_height
+        self.resize_width = resize_width
+        self.num_crops = num_crops
+        self.pos_enc = pos_enc
+        self.interpolation_mode = interpolation_mode
+
+    def output_shape_in(self, input_shape=None):
+        """
+        Function to compute output shape from inputs to this module. Corresponds to
+        the @forward_in operation, where raw inputs (usually observation modalities)
+        are passed in.
+
+        Args:
+            input_shape (iterable of int): shape of input. Does not include batch dimension.
+                Some modules may not need this argument, if their output does not depend
+                on the size of the input, or if they assume fixed size input.
+
+        Returns:
+            out_shape ([int]): list of integers corresponding to output shape
+        """
+
+        # outputs are shape (C, RH, RW), or maybe C + 2 if using position encoding, because
+        # the number of crops are reshaped into the batch dimension, increasing the batch
+        # size from B to B * N
+        out_c = self.input_shape[0] + 2 if self.pos_enc else self.input_shape[0]
+        return [out_c, self.resize_height, self.resize_width]
+
+    def output_shape_out(self, input_shape=None):
+        """
+        Function to compute output shape from inputs to this module. Corresponds to
+        the @forward_out operation, where processed inputs (usually encoded observation
+        modalities) are passed in.
+
+        Args:
+            input_shape (iterable of int): shape of input. Does not include batch dimension.
+                Some modules may not need this argument, if their output does not depend
+                on the size of the input, or if they assume fixed size input.
+
+        Returns:
+            out_shape ([int]): list of integers corresponding to output shape
+        """
+
+        # since the forward_out operation splits [B * N, ...] -> [B, N, ...]
+        # and then pools to result in [B, ...], only the batch dimension changes,
+        # and so the other dimensions retain their shape.
+        return list(input_shape)
+
+    def _forward_in(self, inputs):
+        """
+        Samples N random crops for each input in the batch, resizes them to target size,
+        and then reshapes inputs to [B * N, ...].
+        """
+        assert len(inputs.shape) >= 3 # must have at least (C, H, W) dimensions
+        
+        # First, sample random crops
+        out, _ = ObsUtils.sample_random_image_crops(
+            images=inputs,
+            crop_height=self.crop_height,
+            crop_width=self.crop_width,
+            num_crops=self.num_crops,
+            pos_enc=self.pos_enc,
+        )
+        
+        # Reshape to [B * N, C, crop_height, crop_width] for batch resizing
+        out_reshaped = TensorUtils.join_dimensions(out, 0, 1)
+        
+        # Resize the crops
+        out_resized = F.interpolate(
+            out_reshaped,
+            size=(self.resize_height, self.resize_width),
+            mode=self.interpolation_mode,
+            align_corners=False if self.interpolation_mode in ['bilinear', 'bicubic'] else None
+        )
+        
+        return out_resized
+
+    def _forward_in_eval(self, inputs):
+        """
+        Do center crop and resize during eval
+        """
+        assert len(inputs.shape) >= 3 # must have at least (C, H, W) dimensions
+        
+        # Permute to get spatial dimensions at the end for center crop
+        inputs = inputs.permute(*range(inputs.dim()-3), inputs.dim()-2, inputs.dim()-1, inputs.dim()-3)
+        out = ObsUtils.center_crop(inputs, self.crop_height, self.crop_width)
+        # Permute back to original format
+        out = out.permute(*range(out.dim()-3), out.dim()-1, out.dim()-3, out.dim()-2)
+        
+        # Resize the center crop
+        out_resized = F.interpolate(
+            out,
+            size=(self.resize_height, self.resize_width),
+            mode=self.interpolation_mode,
+            align_corners=False if self.interpolation_mode in ['bilinear', 'bicubic'] else None
+        )
+        
+        return out_resized
+
+    def _forward_out(self, inputs):
+        """
+        Splits the outputs from shape [B * N, ...] -> [B, N, ...] and then average across N
+        to result in shape [B, ...] to make sure the network output is consistent with
+        what would have happened if there were no randomization.
+        """
+        batch_size = (inputs.shape[0] // self.num_crops)
+        out = TensorUtils.reshape_dimensions(inputs, begin_axis=0, end_axis=0,
+                                             target_dims=(batch_size, self.num_crops))
+        return out.mean(dim=1)
+
+    def _visualize(self, pre_random_input, randomized_input, num_samples_to_visualize=2):
+        batch_size = pre_random_input.shape[0]
+        random_sample_inds = torch.randint(0, batch_size, size=(num_samples_to_visualize,))
+        pre_random_input_np = TensorUtils.to_numpy(pre_random_input)[random_sample_inds]
+        randomized_input = TensorUtils.reshape_dimensions(
+            randomized_input,
+            begin_axis=0,
+            end_axis=0,
+            target_dims=(batch_size, self.num_crops)
+        )  # [B * N, ...] -> [B, N, ...]
+        randomized_input_np = TensorUtils.to_numpy(randomized_input[random_sample_inds])
+
+        pre_random_input_np = pre_random_input_np.transpose((0, 2, 3, 1))  # [B, C, H, W] -> [B, H, W, C]
+        randomized_input_np = randomized_input_np.transpose((0, 1, 3, 4, 2))  # [B, N, C, H, W] -> [B, N, H, W, C]
+
+        visualize_image_randomizer(
+            pre_random_input_np,
+            randomized_input_np,
+            randomizer_name='{}'.format(str(self.__class__.__name__))
+        )
+
+    def __repr__(self):
+        """Pretty print network."""
+        header = '{}'.format(str(self.__class__.__name__))
+        msg = header + "(input_shape={}, crop_size=[{}, {}], resize_to=[{}, {}], num_crops={})".format(
+            self.input_shape, self.crop_height, self.crop_width, 
+            self.resize_height, self.resize_width, self.num_crops)
+        return msg
+    
 from typing import List, Tuple, Optional
 
 class SquareCropNormalizer(Randomizer):

@@ -1,7 +1,7 @@
 {
     "algo_name": "diffusion_policy",
     "experiment": {
-        "name": "dp_imn_roboarena_sample_smallBS_class",
+        "name": "dp_imn_roboarena_sample_smallBS",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -133,7 +133,7 @@
             "steps_offset": 0,
             "prediction_type": "epsilon"
         },
-        "class_weight": 1.0,
+        "class_weight": 0.0,
         "class_quantile": 0.01
     },
     "observation": {
@@ -179,11 +179,13 @@
                                    "noise_std" : 0.001
                                   }
                 },
-                "obs_randomizer_class": "CropRandomizer",
+                "obs_randomizer_class": "CropResizeRandomizer",
                 "obs_randomizer_kwargs": {
-                    "input_shape": [3, 224, 224],
-                    "crop_height": 224,
-                    "crop_width": 224,
+                    "input_shape": [3, 180, 320],
+                    "crop_height": 180,
+                    "crop_width": 180,
+                    "resize_height": 224,
+                    "resize_width": 224,
                     "num_crops": 1,
                     "pos_enc" : false
                 }
